@@ -4,17 +4,15 @@ CLI widgets for Claude Code and terminal statuslines. Lightweight scripts for di
 
 ## Preview
 
-Example statusline output:
+![ccwidgets statusline preview](preview.png)
 
 ```
-┌─────────────────────────────────────────────────────────────────┐
-│  main  +3 ~2  +45 -12  ●●  42%                                  │
-└─────────────────────────────────────────────────────────────────┘
-    │     │      │       │   └─ context-pct (context window %)
-    │     │      │       └───── claude-usage-widget (quota dots)
-    │     │      └───────────── git-lines (+added -removed)
-    │     └──────────────────── git-files (+new ~modified -deleted)
-    └────────────────────────── git branch (from your shell/tmux)
+●●  17%  │  feat/admin  │  +2 ~1  │  +9 -0
+│    │        │             │         └─ git-lines (+added -removed)
+│    │        │             └─────────── git-files (+new ~modified)
+│    │        └───────────────────────── git branch
+│    └────────────────────────────────── context-pct (context %)
+└─────────────────────────────────────── claude-usage-widget (quota dots)
 ```
 
 **Claude usage widget states:**
