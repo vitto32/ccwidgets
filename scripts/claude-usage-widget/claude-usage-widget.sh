@@ -39,8 +39,6 @@
 #
 # ============================================================================
 
-set -euo pipefail
-
 # Get usage data (uses cache if fresh)
 DATA=$(claude-pace 2>/dev/null || echo '{}')
 
@@ -115,7 +113,7 @@ elif burn_rate <= 15:
     five_color = "yellow"
 else:
     five_color = "red"
-    five_expand = f"5h:{five_pct:.0f}% {resets_in}"
+    five_expand = f"5h:{five_pct:.0f}%"
 
 # Output format: weekly_color|weekly_dot|five_color|five_dot|expansion
 expansion = ""
@@ -150,6 +148,6 @@ f_col=$(get_color "$five_color")
 printf "${w_col}●${reset}${f_col}●${reset}"
 
 if [ -n "$expansion" ]; then
-    # Use red for expansion text
-    printf " ${red}${expansion}${reset}"
+    # Use red for expansion text (use %s to avoid % in expansion being interpreted)
+    printf " ${red}%s${reset}" "$expansion"
 fi
