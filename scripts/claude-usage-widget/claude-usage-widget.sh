@@ -31,11 +31,12 @@
 # 5-HOUR:
 #   Uses "intensity" = burn rate relative to time remaining
 #   - burn_rate = pct_used / hours_elapsed_in_window
-#   - Show warning if: burn_rate > 10%/h AND time_remaining > 1h
 #   - Thresholds:
 #     - burn_rate <= 10%/h  → green
 #     - burn_rate <= 15%/h  → yellow
-#     - burn_rate > 15%/h   → red (only if time_remaining > 1h)
+#     - burn_rate > 15%/h   → red ONLY IF pct_used > 50%
+#                             (early bursts stay yellow, real danger needs both)
+#     - time_remaining < 1h → green (reset imminent)
 #
 # ============================================================================
 
@@ -103,6 +104,7 @@ if hours_elapsed <= 0:
 burn_rate = five_pct / hours_elapsed  # %/hour
 
 # Determine 5h status
+# Red requires BOTH high burn rate AND >50% used (early bursts are ok)
 five_expand = ""
 if hours_remaining < 1:
     # Reset imminent, don't worry
@@ -111,7 +113,11 @@ elif burn_rate <= 10:
     five_color = "dim_green"
 elif burn_rate <= 15:
     five_color = "yellow"
+elif five_pct <= 50:
+    # High burn rate but still under 50% - just yellow, early burst is ok
+    five_color = "yellow"
 else:
+    # High burn rate AND over 50% - real danger
     five_color = "red"
     five_expand = f"5h:{five_pct:.0f}%"
 

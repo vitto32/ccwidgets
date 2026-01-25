@@ -25,9 +25,9 @@ claude-usage-widget.sh
 - Red: pace_ratio > 1.2 (expands to show details)
 
 **Second dot = 5-hour window**
-- Green: burn_rate <= 10%/h or reset imminent
-- Yellow: burn_rate <= 15%/h
-- Red: burn_rate > 15%/h with >1h remaining
+- Green: burn_rate <= 10%/h or reset imminent (<1h)
+- Yellow: burn_rate <= 15%/h, OR burn_rate > 15%/h but usage <= 50%
+- Red: burn_rate > 15%/h AND usage > 50% (early bursts stay yellow)
 
 ## Dependencies
 
