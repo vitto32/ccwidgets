@@ -184,3 +184,7 @@ To customize thresholds, edit the script directly - they're all single-file with
 ## License
 
 MIT
+
+---
+
+<sub>Vibe coded with [Claude Code](https://claude.ai/download) in a single session.</sub>
