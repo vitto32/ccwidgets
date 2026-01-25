@@ -1,0 +1,67 @@
+#!/bin/bash
+# ccw - Unified CLI wrapper for ccwidgets
+#
+# Usage: ccw <command> [args...]
+
+set -euo pipefail
+
+show_help() {
+    cat << 'EOF'
+ccw - Claude Code Widgets CLI
+
+USAGE:
+    ccw <command> [args...]
+
+COMMANDS:
+    usage, pace     Claude usage with pace calculation
+    widget          Claude usage compact widget (dots)
+    context         Context window percentage (stdin)
+    git-files       Git file status (+added ~modified -deleted)
+    git-lines       Git diff line counts (+added -removed)
+
+OPTIONS:
+    -h, --help      Show this help
+
+EXAMPLES:
+    ccw usage --pretty    # Human-readable Claude usage
+    ccw widget            # Compact dot indicator
+    ccw git-files         # Show file changes
+
+For detailed help on each command, see the README in each script folder.
+EOF
+}
+
+case "${1:-}" in
+    usage|pace)
+        shift
+        exec claude-pace "$@"
+        ;;
+    widget)
+        shift
+        exec claude-usage-widget.sh "$@"
+        ;;
+    context)
+        shift
+        exec context-pct.sh "$@"
+        ;;
+    git-files)
+        shift
+        exec git-files.sh "$@"
+        ;;
+    git-lines)
+        shift
+        exec git-lines.sh "$@"
+        ;;
+    -h|--help|help)
+        show_help
+        ;;
+    "")
+        show_help
+        exit 1
+        ;;
+    *)
+        echo "Unknown command: $1"
+        echo "Run 'ccw --help' for usage."
+        exit 1
+        ;;
+esac

@@ -1,0 +1,245 @@
+#!/usr/bin/env python3
+"""
+claude-pace - Claude usage tracker with pace calculation
+Outputs JSON for ccstatusline integration
+
+Features:
+- Fetches usage from Anthropic OAuth API
+- Calculates pace_ratio (current rate vs sustainable rate)
+- Caches results to avoid excessive API calls
+
+Usage: claude-pace [OPTIONS]
+  --force   Bypass cache and fetch fresh data
+  --pretty  Human-readable formatted output
+"""
+
+import json
+import os
+import subprocess
+import sys
+import urllib.request
+from datetime import datetime, timezone
+from pathlib import Path
+
+CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "claude-pace"
+CACHE_FILE = CACHE_DIR / "usage.json"
+CACHE_TTL = 300  # 5 minutes
+
+
+def get_cache_age() -> float:
+    """Return cache age in seconds, or inf if no cache."""
+    if not CACHE_FILE.exists():
+        return float("inf")
+    return (datetime.now().timestamp() - CACHE_FILE.stat().st_mtime)
+
+
+def read_cache() -> dict | None:
+    """Read cached data if valid."""
+    if get_cache_age() < CACHE_TTL:
+        return json.loads(CACHE_FILE.read_text())
+    return None
+
+
+def write_cache(data: dict) -> None:
+    """Write data to cache."""
+    CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    CACHE_FILE.write_text(json.dumps(data))
+
+
+def get_token() -> str:
+    """Get OAuth token from macOS Keychain."""
+    result = subprocess.run(
+        ["security", "find-generic-password", "-s", "Claude Code-credentials", "-w"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    creds = json.loads(result.stdout.strip())
+    return creds["claudeAiOauth"]["accessToken"]
+
+
+def fetch_usage(token: str) -> dict:
+    """Fetch usage data from Anthropic API."""
+    req = urllib.request.Request(
+        "https://api.anthropic.com/api/oauth/usage",
+        headers={
+            "Authorization": f"Bearer {token}",
+            "anthropic-beta": "oauth-2025-04-20",
+        },
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        return json.loads(resp.read().decode())
+
+
+def parse_reset(reset_str: str) -> datetime:
+    """Parse ISO timestamp to datetime."""
+    return datetime.fromisoformat(reset_str)
+
+
+def calc_pace(utilization: float, resets_at: str, window_days: int) -> dict:
+    """Calculate pace ratio: current daily rate vs sustainable rate."""
+    now = datetime.now(timezone.utc)
+    reset_dt = parse_reset(resets_at)
+    days_remaining = (reset_dt - now).total_seconds() / 86400
+    days_elapsed = window_days - days_remaining
+
+    if days_elapsed <= 0:
+        days_elapsed = 0.1
+
+    daily_avg = utilization / days_elapsed
+    sustainable_rate = 100.0 / window_days
+    pace_ratio = daily_avg / sustainable_rate
+
+    if pace_ratio <= 0.8:
+        status = "under_pace"
+    elif pace_ratio <= 1.0:
+        status = "on_track"
+    elif pace_ratio <= 1.3:
+        status = "over_pace"
+    else:
+        status = "critical"
+
+    return {
+        "pct": utilization,
+        "days_elapsed": round(days_elapsed, 1),
+        "days_remaining": round(days_remaining, 1),
+        "daily_avg": round(daily_avg, 1),
+        "sustainable_rate": round(sustainable_rate, 1),
+        "pace_ratio": round(pace_ratio, 2),
+        "projected_eow": round(daily_avg * window_days, 1),
+        "resets_at": resets_at,
+        "status": status,
+    }
+
+
+def format_duration(seconds: float) -> str:
+    """Format seconds as human readable duration."""
+    if seconds < 0:
+        return "now"
+    hours = int(seconds // 3600)
+    minutes = int((seconds % 3600) // 60)
+    if hours > 24:
+        days = hours // 24
+        hours = hours % 24
+        return f"{days}d {hours}h"
+    return f"{hours}h {minutes}m"
+
+
+def process_usage(data: dict) -> dict:
+    """Process raw usage data into pace metrics."""
+    now = datetime.now(timezone.utc)
+
+    five_hour = data.get("five_hour", {})
+    five_hour_reset = parse_reset(five_hour["resets_at"])
+    five_hour_remaining = (five_hour_reset - now).total_seconds()
+
+    # Calculate 5h burn rate
+    hours_remaining = five_hour_remaining / 3600
+    hours_elapsed = 5 - hours_remaining
+    if hours_elapsed <= 0:
+        hours_elapsed = 0.1
+    burn_rate = five_hour["utilization"] / hours_elapsed
+
+    seven_day = data.get("seven_day", {})
+    seven_day_pace = calc_pace(seven_day["utilization"], seven_day["resets_at"], 7)
+
+    return {
+        "five_hour": {
+            "pct": five_hour["utilization"],
+            "resets_in": format_duration(five_hour_remaining),
+            "resets_at": five_hour["resets_at"],
+            "burn_rate": round(burn_rate, 1),
+        },
+        "seven_day": seven_day_pace,
+        "fetched_at": now.isoformat(),
+    }
+
+
+def pretty_print(data: dict) -> None:
+    """Print human-readable formatted output."""
+    # Colors
+    dim = "\033[90m"
+    green = "\033[38;2;100;200;100m"
+    yellow = "\033[38;2;255;200;50m"
+    red = "\033[38;2;255;85;85m"
+    bold = "\033[1m"
+    reset = "\033[0m"
+
+    weekly = data.get("seven_day", {})
+    five_h = data.get("five_hour", {})
+
+    # Determine weekly color
+    pace = weekly.get("pace_ratio", 0)
+    if pace <= 1.0:
+        w_col = green
+        w_status = "on track"
+    elif pace <= 1.2:
+        w_col = yellow
+        w_status = "slightly over"
+    else:
+        w_col = red
+        w_status = "over pace"
+
+    # Determine 5h color
+    burn = five_h.get("burn_rate", 0)
+    if burn <= 10:
+        h_col = green
+    elif burn <= 15:
+        h_col = yellow
+    else:
+        h_col = red
+
+    print(f"\n{bold}Claude Usage{reset}\n")
+
+    # Weekly section
+    w_pct = weekly.get("pct", 0)
+    w_remaining = 100 - w_pct
+    w_proj = weekly.get("projected_eow", 0)
+    w_days = weekly.get("days_remaining", 0)
+
+    print(f"{bold}Weekly (7 days){reset}")
+    print(f"  Used: {w_col}{w_pct:.0f}%{reset} │ Remaining: {w_remaining:.0f}%")
+    print(f"  Pace: {w_col}{pace:.2f}x{reset} ({w_status})")
+    print(f"  Projected EOW: {w_col}{w_proj:.0f}%{reset}")
+    print(f"  Resets in: {w_days:.1f} days")
+
+    print()
+
+    # 5-hour section
+    h_pct = five_h.get("pct", 0)
+    h_remaining = 100 - h_pct
+    h_resets = five_h.get("resets_in", "?")
+
+    print(f"{bold}5-Hour Window{reset}")
+    print(f"  Used: {h_col}{h_pct:.0f}%{reset} │ Remaining: {h_remaining:.0f}%")
+    print(f"  Burn rate: {h_col}{burn:.1f}%/h{reset}")
+    print(f"  Resets in: {h_resets}")
+
+    print()
+
+
+def main():
+    force = "--force" in sys.argv
+    pretty = "--pretty" in sys.argv
+
+    # Try cache first (unless forcing refresh)
+    result = None
+    if not force:
+        result = read_cache()
+
+    # Fetch fresh if no cache
+    if result is None:
+        token = get_token()
+        raw_usage = fetch_usage(token)
+        result = process_usage(raw_usage)
+        write_cache(result)
+
+    # Output
+    if pretty:
+        pretty_print(result)
+    else:
+        print(json.dumps(result))
+
+
+if __name__ == "__main__":
+    main()
