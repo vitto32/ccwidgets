@@ -76,6 +76,61 @@ def parse_reset(reset_str: str) -> datetime:
     return datetime.fromisoformat(reset_str)
 
 
+# Status thresholds
+PACE_WARNING = 0.9       # Warning if pace > 0.9
+PACE_CRITICAL = 1.25     # Critical if pace > 1.25 (would exhaust ~1.4 days early)
+SAFETY_WARNING = 1.5     # Warning if runway < 150% of time remaining
+SAFETY_CRITICAL = 1.0    # Critical if runway < time remaining (will exhaust before reset)
+
+
+def calc_runway(utilization: float, daily_avg: float, hours_remaining: float) -> dict:
+    """Calculate runway metrics (how long until quota exhaustion).
+
+    Runway is the number of hours of usage remaining at current burn rate.
+    Safety ratio compares runway to time remaining until reset.
+    """
+    remaining_pct = 100 - utilization
+    burn_rate_hour = daily_avg / 24 if daily_avg > 0 else 0
+
+    if burn_rate_hour > 0:
+        runway_hours = remaining_pct / burn_rate_hour
+    else:
+        runway_hours = float('inf')
+
+    if hours_remaining > 0:
+        safety_ratio = runway_hours / hours_remaining
+    else:
+        safety_ratio = 0 if utilization >= 100 else float('inf')
+
+    return {
+        "runway_hours": round(runway_hours, 1) if runway_hours != float('inf') else 9999,
+        "hours_remaining": round(hours_remaining, 1),
+        "safety_ratio": round(safety_ratio, 2) if safety_ratio != float('inf') else 99,
+        "buffer_hours": round(runway_hours - hours_remaining, 1) if runway_hours != float('inf') else 9999,
+    }
+
+
+def calc_status(pace_ratio: float, safety_ratio: float) -> str:
+    """Determine status from combined pace and safety metrics.
+
+    Safety ratio takes priority: if you're about to exhaust quota,
+    it's critical regardless of historical pace.
+    """
+    # Critical: will exhaust before reset OR very high projected usage
+    if safety_ratio < SAFETY_CRITICAL or pace_ratio > PACE_CRITICAL:
+        return "critical"
+
+    # Warning: reduced margin OR elevated pace
+    if safety_ratio < SAFETY_WARNING or pace_ratio > PACE_WARNING:
+        return "over_pace"
+
+    # Banking quota
+    if pace_ratio <= 0.8:
+        return "under_pace"
+
+    return "on_track"
+
+
 def calc_pace(utilization: float, resets_at: str, window_days: int) -> dict:
     """Calculate pace ratio: current daily rate vs sustainable rate."""
     now = datetime.now(timezone.utc)
@@ -90,14 +145,12 @@ def calc_pace(utilization: float, resets_at: str, window_days: int) -> dict:
     sustainable_rate = 100.0 / window_days
     pace_ratio = daily_avg / sustainable_rate
 
-    if pace_ratio <= 0.8:
-        status = "under_pace"
-    elif pace_ratio <= 1.0:
-        status = "on_track"
-    elif pace_ratio <= 1.3:
-        status = "over_pace"
-    else:
-        status = "critical"
+    # Calculate runway and safety metrics
+    hours_remaining = days_remaining * 24
+    runway = calc_runway(utilization, daily_avg, hours_remaining)
+
+    # Determine status from combined metrics
+    status = calc_status(pace_ratio, runway["safety_ratio"])
 
     return {
         "pct": utilization,
@@ -109,6 +162,9 @@ def calc_pace(utilization: float, resets_at: str, window_days: int) -> dict:
         "projected_eow": round(daily_avg * window_days, 1),
         "resets_at": resets_at,
         "status": status,
+        "runway_hours": runway["runway_hours"],
+        "safety_ratio": runway["safety_ratio"],
+        "buffer_hours": runway["buffer_hours"],
     }
 
 
@@ -168,17 +224,20 @@ def pretty_print(data: dict) -> None:
     weekly = data.get("seven_day", {})
     five_h = data.get("five_hour", {})
 
-    # Determine weekly color
-    pace = weekly.get("pace_ratio", 0)
-    if pace <= 1.0:
+    # Determine weekly color based on status
+    status = weekly.get("status", "on_track")
+    if status == "critical":
+        w_col = red
+        w_status = "CRITICAL"
+    elif status == "over_pace":
+        w_col = yellow
+        w_status = "warning"
+    elif status == "under_pace":
+        w_col = green
+        w_status = "banking"
+    else:
         w_col = green
         w_status = "on track"
-    elif pace <= 1.2:
-        w_col = yellow
-        w_status = "slightly over"
-    else:
-        w_col = red
-        w_status = "over pace"
 
     # Determine 5h color
     burn = five_h.get("burn_rate", 0)
@@ -196,10 +255,15 @@ def pretty_print(data: dict) -> None:
     w_remaining = 100 - w_pct
     w_proj = weekly.get("projected_eow", 0)
     w_days = weekly.get("days_remaining", 0)
+    pace = weekly.get("pace_ratio", 0)
+    safety = weekly.get("safety_ratio", 99)
+    runway = weekly.get("runway_hours", 9999)
+    buffer = weekly.get("buffer_hours", 9999)
 
     print(f"{bold}Weekly (7 days){reset}")
     print(f"  Used: {w_col}{w_pct:.0f}%{reset} │ Remaining: {w_remaining:.0f}%")
     print(f"  Pace: {w_col}{pace:.2f}x{reset} ({w_status})")
+    print(f"  Safety: {w_col}{safety:.2f}x{reset} │ Runway: {runway:.0f}h │ Buffer: {buffer:+.0f}h")
     print(f"  Projected EOW: {w_col}{w_proj:.0f}%{reset}")
     print(f"  Resets in: {w_days:.1f} days")
 

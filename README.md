@@ -140,10 +140,21 @@ PS1='$(git branch --show-current 2>/dev/null) $(git-files.sh) $ '
 `claude-pace` fetches usage from Anthropic's OAuth API and calculates:
 
 - **pace_ratio**: Your current usage rate vs sustainable rate
+  - `<= 0.8` = banking quota (under pace)
   - `<= 1.0` = on track to use full quota
-  - `> 1.0` = ahead of pace (may hit limit early)
+  - `> 0.9` = warning threshold
+  - `> 1.25` = critical (would exhaust ~1.4 days early)
 
+- **safety_ratio**: Runway hours vs hours until reset
+  - `> 1.5` = comfortable margin
+  - `< 1.5` = warning (reduced margin)
+  - `< 1.0` = critical (will exhaust before reset)
+
+- **runway_hours**: Hours of usage remaining at current burn rate
+- **buffer_hours**: Runway minus hours until reset (negative = danger)
 - **burn_rate**: 5-hour window consumption speed (%/hour)
+
+Status is determined by combining both pace and safety metrics. Safety ratio takes priority: even with a low pace_ratio, you'll see critical status if you're projected to exhaust quota before reset.
 
 Results are cached for 5 minutes at `~/.cache/claude-pace/usage.json`.
 
