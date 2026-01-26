@@ -20,12 +20,15 @@ claude-usage-widget.sh
 ## Display Logic
 
 **First dot = Weekly (7-day)**
-- Green: pace_ratio <= 1.0
-- Yellow: pace_ratio <= 1.2
-- Red: pace_ratio > 1.2 (expands to show details)
+
+Uses `status` from `claude-pace` (combines pace_ratio + safety_ratio):
+- Green: under_pace or on_track
+- Yellow: over_pace
+- Red: critical (expands to show remaining % and pace)
 
 **Second dot = 5-hour window**
-- Sustainable rate: 20%/h (100% / 5h)
+
+Uses `burn_rate` from `claude-pace` (sustainable = 20%/h):
 - Green: burn_rate <= 20%/h or reset imminent (<1h)
 - Yellow: burn_rate <= 25%/h, OR burn_rate > 25%/h but usage <= 50%
 - Red: burn_rate > 25%/h AND usage > 50% (early bursts stay yellow)

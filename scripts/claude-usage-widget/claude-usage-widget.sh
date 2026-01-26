@@ -20,24 +20,23 @@
 #   5h critical:     ●● 5h:80% 3h      ← usage % + time to reset
 #
 # ============================================================================
-# THRESHOLDS
+# THRESHOLDS (calculated by claude-pace, widget is display-only)
 # ============================================================================
 #
 # WEEKLY (7-day):
-#   - pace_ratio <= 1.0  → green (on track)
-#   - pace_ratio <= 1.2  → yellow (attention)
-#   - pace_ratio > 1.2   → red + show details
+#   Uses status from claude-pace (combines pace_ratio + safety_ratio):
+#   - "under_pace" / "on_track" → green
+#   - "over_pace"               → yellow
+#   - "critical"                → red + show details
 #
 # 5-HOUR:
-#   Uses "intensity" = burn rate relative to time remaining
-#   - burn_rate = pct_used / hours_elapsed_in_window
+#   Uses burn_rate from claude-pace (no recalculation)
 #   - Sustainable rate = 20%/h (100% / 5h)
-#   - Thresholds:
-#     - burn_rate <= 20%/h  → green (at or below sustainable)
-#     - burn_rate <= 25%/h  → yellow (would exhaust in ~4h)
-#     - burn_rate > 25%/h   → red ONLY IF pct_used > 50%
-#                             (early bursts stay yellow, real danger needs both)
-#     - time_remaining < 1h → green (reset imminent)
+#   - burn_rate <= 20%/h  → green (at or below sustainable)
+#   - burn_rate <= 25%/h  → yellow (would exhaust in ~4h)
+#   - burn_rate > 25%/h   → red ONLY IF pct_used > 50%
+#                           (early bursts stay yellow)
+#   - time_remaining < 1h → green (reset imminent)
 #
 # ============================================================================
 
@@ -63,62 +62,50 @@ except:
     print("gray|●|gray|●|")
     sys.exit(0)
 
-# Weekly calculations
+# Weekly: use status from claude-pace (combines pace_ratio + safety_ratio)
 weekly = data.get("seven_day", {})
 weekly_pct = weekly.get("pct", 0)
 weekly_remaining = 100 - weekly_pct
 pace_ratio = weekly.get("pace_ratio", 0)
+weekly_status = weekly.get("status", "on_track")
 
-if pace_ratio <= 1.0:
-    weekly_color = "dim_green"
-    weekly_expand = ""
-elif pace_ratio <= 1.2:
+if weekly_status == "critical":
+    weekly_color = "red"
+    weekly_expand = f"S:{weekly_remaining:.0f}% ({pace_ratio:.1f}x)"
+elif weekly_status == "over_pace":
     weekly_color = "yellow"
     weekly_expand = ""
 else:
-    weekly_color = "red"
-    weekly_expand = f"S:{weekly_remaining:.0f}% ({pace_ratio:.1f}x)"
+    weekly_color = "dim_green"
+    weekly_expand = ""
 
-# 5-hour calculations
+# 5h: use burn_rate from claude-pace (no recalculation)
 five_hour = data.get("five_hour", {})
 five_pct = five_hour.get("pct", 0)
+burn_rate = five_hour.get("burn_rate", 0)
 resets_in = five_hour.get("resets_in", "0h 0m")
 
-# Parse resets_in to get hours remaining
+# Parse resets_in only for reset-imminent check
 hours_remaining = 0
-if "d" in resets_in:
+if "h" in resets_in:
     parts = resets_in.replace("d", " ").replace("h", " ").replace("m", "").split()
-    if len(parts) >= 2:
-        hours_remaining = int(parts[0]) * 24 + int(parts[1])
-elif "h" in resets_in:
-    parts = resets_in.replace("h", " ").replace("m", "").split()
     if len(parts) >= 1:
         hours_remaining = int(parts[0])
         if len(parts) >= 2:
             hours_remaining += int(parts[1]) / 60
 
-# Calculate burn rate: how much % per hour we're consuming
-# hours_elapsed = 5 - hours_remaining
-hours_elapsed = 5 - hours_remaining
-if hours_elapsed <= 0:
-    hours_elapsed = 0.1
-burn_rate = five_pct / hours_elapsed  # %/hour
-
-# Determine 5h status
-# Red requires BOTH high burn rate AND >50% used (early bursts are ok)
+# Determine 5h color (sustainable = 20%/h)
+# Red requires BOTH high burn rate AND >50% used
 five_expand = ""
 if hours_remaining < 1:
-    # Reset imminent, don't worry
     five_color = "dim_green"
 elif burn_rate <= 20:
     five_color = "dim_green"
 elif burn_rate <= 25:
     five_color = "yellow"
 elif five_pct <= 50:
-    # High burn rate but still under 50% - just yellow, early burst is ok
     five_color = "yellow"
 else:
-    # High burn rate AND over 50% - real danger
     five_color = "red"
     five_expand = f"5h:{five_pct:.0f}%"
 
