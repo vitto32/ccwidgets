@@ -31,10 +31,11 @@
 # 5-HOUR:
 #   Uses "intensity" = burn rate relative to time remaining
 #   - burn_rate = pct_used / hours_elapsed_in_window
+#   - Sustainable rate = 20%/h (100% / 5h)
 #   - Thresholds:
-#     - burn_rate <= 10%/h  → green
-#     - burn_rate <= 15%/h  → yellow
-#     - burn_rate > 15%/h   → red ONLY IF pct_used > 50%
+#     - burn_rate <= 20%/h  → green (at or below sustainable)
+#     - burn_rate <= 25%/h  → yellow (would exhaust in ~4h)
+#     - burn_rate > 25%/h   → red ONLY IF pct_used > 50%
 #                             (early bursts stay yellow, real danger needs both)
 #     - time_remaining < 1h → green (reset imminent)
 #
@@ -109,9 +110,9 @@ five_expand = ""
 if hours_remaining < 1:
     # Reset imminent, don't worry
     five_color = "dim_green"
-elif burn_rate <= 10:
+elif burn_rate <= 20:
     five_color = "dim_green"
-elif burn_rate <= 15:
+elif burn_rate <= 25:
     five_color = "yellow"
 elif five_pct <= 50:
     # High burn rate but still under 50% - just yellow, early burst is ok
