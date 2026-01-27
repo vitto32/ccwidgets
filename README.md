@@ -7,22 +7,24 @@ CLI widgets for Claude Code and terminal statuslines. Lightweight scripts for di
 ![ccwidgets statusline preview](preview.png)
 
 ```
-●●  17%  │  feat/admin  │  +2 ~1  │  +9 -0
-│    │        │             │         └─ git-lines (+added -removed)
-│    │        │             └─────────── git-files (+new ~modified)
-│    │        └───────────────────────── git branch
-│    └────────────────────────────────── context-pct (context %)
-└─────────────────────────────────────── claude-usage-widget (quota dots)
+●● w:60>57 h:04≈32  │  feat/admin  │  +2 ~1  │  +9 -0
+│                         │             │         └─ git-lines (+added -removed)
+│                         │             └─────────── git-files (+new ~modified)
+│                         └───────────────────────── git branch
+└─────────────────────────────────────────────────── claude-pace (quota dots + pace)
 ```
 
-**Claude usage widget states:**
+**claude-pace compact output** (`--always-on-7d --always-on-5h`):
 
 ```
-●●                    # All good (green dots)
-●●                    # Weekly attention (yellow + green)
-●● S:35% (1.3x)       # Weekly critical (shows remaining % and pace)
-●● 5h:80% 2h          # 5h critical (shows usage and reset time)
+●● w:60>57 h:04≈32   # Dots + weekly + 5h (default)
+●● w:3.0>2.2         # Units mode (days/hours)
+●● w:40>43            # Remaining mode
+w:60>57 h:04≈32      # No dots
 ```
+
+Dots: first=weekly, second=5h. Colors: green (ok), yellow (over_pace), red (critical).
+Symbol: `≪` `<` `≈` `>` `≫` based on pace ratio.
 
 ## Installation
 
@@ -57,7 +59,7 @@ ln -sf ~/.local/ccwidgets/scripts/claude-usage-widget/claude-usage-widget.sh ~/.
 
 | Script | Purpose | Output |
 |--------|---------|--------|
-| `claude-pace` | Claude API usage + pace calculation | JSON or pretty |
+| `claude-pace` | Claude API usage + pace calculation | JSON, pretty, or compact statusline |
 | `claude-usage-widget.sh` | Compact two-dot indicator | `●●` with colors |
 | `context-pct.sh` | Context window percentage | `42%` with colors |
 | `git-files.sh` | File status counts | `+3 ~2 -1` |

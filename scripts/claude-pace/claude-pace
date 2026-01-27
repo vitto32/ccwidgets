@@ -9,8 +9,14 @@ Features:
 - Caches results to avoid excessive API calls
 
 Usage: claude-pace [OPTIONS]
-  --force   Bypass cache and fetch fresh data
-  --pretty  Human-readable formatted output
+  --force          Bypass cache and fetch fresh data
+  --pretty         Human-readable formatted output
+  --always-on-7d   Compact statusline segment for weekly window
+  --always-on-5h   Compact statusline segment for 5h window
+  --no-dots        Hide status dots (●●)
+  --units          Show days/hours instead of percentages
+  --remaining      Show remaining instead of used
+  --pace           Show pace ratio (e.g. w:1.05x) instead of values
 """
 
 import json
@@ -190,25 +196,168 @@ def process_usage(data: dict) -> dict:
     five_hour_remaining = (five_hour_reset - now).total_seconds()
 
     # Calculate 5h burn rate
-    hours_remaining = five_hour_remaining / 3600
-    hours_elapsed = 5 - hours_remaining
-    if hours_elapsed <= 0:
-        hours_elapsed = 0.1
-    burn_rate = five_hour["utilization"] / hours_elapsed
+    hours_remaining_5h = five_hour_remaining / 3600
+    hours_elapsed_5h = 5 - hours_remaining_5h
+    if hours_elapsed_5h <= 0:
+        hours_elapsed_5h = 0.1
+    pct_5h = five_hour["utilization"]
+    burn_rate = pct_5h / hours_elapsed_5h
+    pace_ratio_5h = burn_rate / 20.0  # sustainable = 20%/h
+
+    # 5h status (mirrors widget logic)
+    if hours_remaining_5h < 1:
+        status_5h = "on_track"  # reset imminent
+    elif burn_rate <= 20:
+        status_5h = "on_track"
+    elif burn_rate <= 25:
+        status_5h = "over_pace"
+    elif pct_5h > 50:
+        status_5h = "critical"
+    else:
+        status_5h = "over_pace"  # early burst
 
     seven_day = data.get("seven_day", {})
     seven_day_pace = calc_pace(seven_day["utilization"], seven_day["resets_at"], 7)
 
     return {
         "five_hour": {
-            "pct": five_hour["utilization"],
+            "pct": pct_5h,
             "resets_in": format_duration(five_hour_remaining),
             "resets_at": five_hour["resets_at"],
             "burn_rate": round(burn_rate, 1),
+            "pace_ratio": round(pace_ratio_5h, 2),
+            "hours_elapsed": round(hours_elapsed_5h, 2),
+            "hours_remaining": round(hours_remaining_5h, 2),
+            "status": status_5h,
         },
         "seven_day": seven_day_pace,
         "fetched_at": now.isoformat(),
     }
+
+
+def pace_symbol(ratio: float) -> str:
+    """Return symbol representing pace ratio: ≪ < ≈ > ≫."""
+    if ratio > 1.2:
+        return "≫"
+    if ratio >= 0.9:
+        return ">"
+    if ratio >= 0.8:
+        return "≈"
+    if ratio >= 0.5:
+        return "<"
+    return "≪"
+
+
+def ansi_wrap(text: str, status: str) -> str:
+    """Wrap text in ANSI color based on status. No-op for green statuses."""
+    yellow = "\033[38;2;255;200;50m"
+    red = "\033[38;2;255;85;85m"
+    reset = "\033[0m"
+    if status == "critical":
+        return f"{red}{text}{reset}"
+    if status == "over_pace":
+        return f"{yellow}{text}{reset}"
+    return text
+
+
+def dot_color(status: str) -> str:
+    """Return colored ● for status: dim_green / yellow / red."""
+    dim_green = "\033[38;2;100;200;100m"
+    yellow = "\033[38;2;255;200;50m"
+    red = "\033[38;2;255;85;85m"
+    reset = "\033[0m"
+    if status == "critical":
+        return f"{red}●{reset}"
+    if status == "over_pace":
+        return f"{yellow}●{reset}"
+    return f"{dim_green}●{reset}"
+
+
+def format_compact_segment(
+    prefix: str,
+    pct: float,
+    pace_ratio_val: float,
+    elapsed: float,
+    window_size: float,
+    status: str,
+    units: bool,
+    remaining: bool,
+    pace: bool,
+) -> str:
+    """Render one compact segment like w:60>57 or h:2.5≈1.3."""
+    if pace:
+        text = f"{prefix}:{pace_ratio_val:.2f}x"
+        return ansi_wrap(text, status)
+
+    sym = pace_symbol(pace_ratio_val)
+
+    if units:
+        if remaining:
+            left = window_size - elapsed
+            right = (window_size * (100 - pct)) / 100
+        else:
+            left = elapsed
+            right = (window_size * pct) / 100
+        text = f"{prefix}:{left:.1f}{sym}{right:.1f}"
+    else:
+        if remaining:
+            left_val = min(99, int(100 - pct))
+            right_val = min(99, int((1 - elapsed / window_size) * 100))
+        else:
+            left_val = min(99, int(pct))
+            right_val = min(99, int(elapsed / window_size * 100))
+        text = f"{prefix}:{left_val:02d}{sym}{right_val:02d}"
+
+    return ansi_wrap(text, status)
+
+
+def print_always_on(
+    data: dict,
+    show_7d: bool,
+    show_5h: bool,
+    dots: bool,
+    units: bool,
+    remaining: bool,
+    pace: bool,
+) -> None:
+    """Print compact statusline with composable flags."""
+    parts: list[str] = []
+    weekly = data.get("seven_day", {})
+    five_h = data.get("five_hour", {})
+
+    w_status = weekly.get("status", "on_track")
+    h_status = five_h.get("status", "on_track")
+
+    if dots:
+        parts.append(dot_color(w_status) + dot_color(h_status))
+
+    if show_7d:
+        parts.append(format_compact_segment(
+            prefix="w",
+            pct=weekly.get("pct", 0),
+            pace_ratio_val=weekly.get("pace_ratio", 0),
+            elapsed=weekly.get("days_elapsed", 0),
+            window_size=7,
+            status=w_status,
+            units=units,
+            remaining=remaining,
+            pace=pace,
+        ))
+
+    if show_5h:
+        parts.append(format_compact_segment(
+            prefix="h",
+            pct=five_h.get("pct", 0),
+            pace_ratio_val=five_h.get("pace_ratio", 0),
+            elapsed=five_h.get("hours_elapsed", 0),
+            window_size=5,
+            status=h_status,
+            units=units,
+            remaining=remaining,
+            pace=pace,
+        ))
+
+    print(" ".join(parts), end="")
 
 
 def pretty_print(data: dict) -> None:
@@ -239,11 +388,11 @@ def pretty_print(data: dict) -> None:
         w_col = green
         w_status = "on track"
 
-    # Determine 5h color
+    # Determine 5h color (sustainable rate = 20%/h)
     burn = five_h.get("burn_rate", 0)
-    if burn <= 10:
+    if burn <= 20:
         h_col = green
-    elif burn <= 15:
+    elif burn <= 25:
         h_col = yellow
     else:
         h_col = red
@@ -283,8 +432,16 @@ def pretty_print(data: dict) -> None:
 
 
 def main():
-    force = "--force" in sys.argv
-    pretty = "--pretty" in sys.argv
+    args = sys.argv[1:]
+    force = "--force" in args
+    pretty = "--pretty" in args
+    show_7d = "--always-on-7d" in args
+    show_5h = "--always-on-5h" in args
+    no_dots = "--no-dots" in args
+    units = "--units" in args
+    remaining = "--remaining" in args
+    pace = "--pace" in args
+    always_on = show_7d or show_5h
 
     # Try cache first (unless forcing refresh)
     result = None
@@ -299,7 +456,9 @@ def main():
         write_cache(result)
 
     # Output
-    if pretty:
+    if always_on:
+        print_always_on(result, show_7d, show_5h, dots=not no_dots, units=units, remaining=remaining, pace=pace)
+    elif pretty:
         pretty_print(result)
     else:
         print(json.dumps(result))
