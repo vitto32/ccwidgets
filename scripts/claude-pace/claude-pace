@@ -29,6 +29,7 @@ from pathlib import Path
 
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "claude-pace"
 CACHE_FILE = CACHE_DIR / "usage.json"
+LOCK_FILE = CACHE_DIR / "refresh.lock"
 CACHE_TTL = 300  # 5 minutes
 
 
@@ -46,10 +47,35 @@ def read_cache() -> dict | None:
     return None
 
 
+def read_cache_any() -> dict | None:
+    """Read cached data regardless of age."""
+    if CACHE_FILE.exists():
+        return json.loads(CACHE_FILE.read_text())
+    return None
+
+
 def write_cache(data: dict) -> None:
     """Write data to cache."""
     CACHE_DIR.mkdir(parents=True, exist_ok=True)
     CACHE_FILE.write_text(json.dumps(data))
+
+
+def spawn_background_refresh() -> None:
+    """Spawn a detached background process to refresh the cache.
+
+    Uses a lock file to prevent concurrent refreshes.
+    """
+    # Check lock: skip if another refresh is already running
+    if LOCK_FILE.exists():
+        lock_age = datetime.now().timestamp() - LOCK_FILE.stat().st_mtime
+        if lock_age < 30:  # stale lock after 30s
+            return
+    subprocess.Popen(
+        [sys.executable, __file__, "--force", "--bg-refresh"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
 
 
 def get_token() -> str:
@@ -431,6 +457,15 @@ def pretty_print(data: dict) -> None:
     print()
 
 
+def fetch_and_cache() -> dict:
+    """Fetch fresh data from API and write to cache."""
+    token = get_token()
+    raw_usage = fetch_usage(token)
+    result = process_usage(raw_usage)
+    write_cache(result)
+    return result
+
+
 def main():
     args = sys.argv[1:]
     force = "--force" in args
@@ -442,18 +477,38 @@ def main():
     remaining = "--remaining" in args
     pace = "--pace" in args
     always_on = show_7d or show_5h
+    bg_refresh = "--bg-refresh" in args
 
-    # Try cache first (unless forcing refresh)
+    # Background refresh mode: fetch, write cache, exit silently
+    if bg_refresh:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        LOCK_FILE.touch()
+        try:
+            fetch_and_cache()
+        finally:
+            LOCK_FILE.unlink(missing_ok=True)
+        return
+
+    # Try fresh cache first
     result = None
     if not force:
         result = read_cache()
 
-    # Fetch fresh if no cache
-    if result is None:
-        token = get_token()
-        raw_usage = fetch_usage(token)
-        result = process_usage(raw_usage)
-        write_cache(result)
+    if result is not None:
+        # Cache hit — output immediately
+        pass
+    elif not force and always_on:
+        # Stale-while-revalidate: return stale data, refresh in background
+        stale = read_cache_any()
+        if stale is not None:
+            result = stale
+            spawn_background_refresh()
+        else:
+            # No cache at all — must block
+            result = fetch_and_cache()
+    else:
+        # No cache or --force — fetch synchronously
+        result = fetch_and_cache()
 
     # Output
     if always_on:
