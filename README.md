@@ -65,16 +65,17 @@ ln -sf ~/.local/ccwidgets/scripts/claude-usage-widget/claude-usage-widget.sh ~/.
 | `git-files.sh` | File status counts | `+3 ~2 -1` |
 | `git-lines.sh` | Line diff counts | `+45 -12` |
 
-### ccw wrapper
+### ccuse wrapper
 
-All scripts are also available via the `ccw` command:
+All scripts are also available via the `ccuse` command:
 
 ```bash
-ccw usage --pretty    # → claude-pace --pretty
-ccw widget            # → claude-usage-widget.sh
-ccw context           # → context-pct.sh
-ccw git-files         # → git-files.sh
-ccw git-lines         # → git-lines.sh
+ccuse usage            # → claude-pace --pretty (default)
+ccuse usage --force    # → claude-pace --force
+ccuse widget           # → claude-usage-widget.sh
+ccuse context          # → context-pct.sh
+ccuse git-files        # → git-files.sh
+ccuse git-lines        # → git-lines.sh
 ```
 
 ## Integration Examples

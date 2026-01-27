@@ -64,8 +64,8 @@ link_script "${SCRIPT_DIR}/scripts/context-pct/context-pct.sh" "context-pct.sh"
 link_script "${SCRIPT_DIR}/scripts/git-files/git-files.sh" "git-files.sh"
 link_script "${SCRIPT_DIR}/scripts/git-lines/git-lines.sh" "git-lines.sh"
 
-# Link ccw wrapper
-link_script "${SCRIPT_DIR}/ccw" "ccw"
+# Link ccuse wrapper
+link_script "${SCRIPT_DIR}/ccuse" "ccuse"
 
 echo
 
@@ -86,6 +86,6 @@ echo "  claude-usage-widget.sh - Compact usage indicator"
 echo "  context-pct.sh         - Context percentage display"
 echo "  git-files.sh           - Git file status"
 echo "  git-lines.sh           - Git line diff counts"
-echo "  ccw                    - Unified wrapper"
+echo "  ccuse                  - Unified wrapper"
 echo
-echo "Run 'ccw --help' to see all commands."
+echo "Run 'ccuse --help' to see all commands."

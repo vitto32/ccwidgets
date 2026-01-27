@@ -1,16 +1,16 @@
 #!/bin/bash
-# ccw - Unified CLI wrapper for ccwidgets
+# ccuse - Unified CLI wrapper for ccuseidgets
 #
-# Usage: ccw <command> [args...]
+# Usage: ccuse <command> [args...]
 
 set -euo pipefail
 
 show_help() {
     cat << 'EOF'
-ccw - Claude Code Widgets CLI
+ccuse - Claude Code Widgets CLI
 
 USAGE:
-    ccw <command> [args...]
+    ccuse <command> [args...]
 
 COMMANDS:
     usage, pace     Claude usage with pace calculation
@@ -23,9 +23,9 @@ OPTIONS:
     -h, --help      Show this help
 
 EXAMPLES:
-    ccw usage --pretty    # Human-readable Claude usage
-    ccw widget            # Compact dot indicator
-    ccw git-files         # Show file changes
+    ccuse usage --pretty    # Human-readable Claude usage
+    ccuse widget            # Compact dot indicator
+    ccuse git-files         # Show file changes
 
 For detailed help on each command, see the README in each script folder.
 EOF
@@ -64,7 +64,7 @@ case "${1:-}" in
         ;;
     *)
         echo "Unknown command: $1"
-        echo "Run 'ccw --help' for usage."
+        echo "Run 'ccuse --help' for usage."
         exit 1
         ;;
 esac
