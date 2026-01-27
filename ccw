@@ -34,6 +34,9 @@ EOF
 case "${1:-}" in
     usage|pace)
         shift
+        if [ $# -eq 0 ]; then
+            exec claude-pace --pretty
+        fi
         exec claude-pace "$@"
         ;;
     widget)
