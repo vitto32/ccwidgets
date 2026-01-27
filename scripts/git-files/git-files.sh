@@ -2,7 +2,7 @@
 # git-files.sh - Show git file status counts
 #
 # Output: +added ~modified -deleted (colored)
-# If clean: "✓ clean" (gray)
+# If clean: "✓" (gray)
 #
 # Colors (Claude Code palette):
 #   #39A660 : added files
@@ -20,5 +20,5 @@ END{
   if(m>0) o=o sprintf("%s~%d%s ",y,m,n)
   if(d>0) o=o sprintf("%s-%d%s",r,d,n)
   if(length(o)>0) print o
-  else printf "%s✓ clean%s", gr, n
+  else printf "%s✓%s", gr, n
 }'
