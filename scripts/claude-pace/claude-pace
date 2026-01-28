@@ -108,11 +108,9 @@ def parse_reset(reset_str: str) -> datetime:
     return datetime.fromisoformat(reset_str)
 
 
-# Status thresholds
-PACE_WARNING = 0.9       # Warning if pace > 0.9
-PACE_CRITICAL = 1.25     # Critical if pace > 1.25 (would exhaust ~1.4 days early)
-SAFETY_WARNING = 1.5     # Warning if runway < 150% of time remaining
-SAFETY_CRITICAL = 1.0    # Critical if runway < time remaining (will exhaust before reset)
+# Base status thresholds (adjusted dynamically based on utilization)
+PACE_WARNING = 1.0       # Warning if pace > 1.0 (using quota faster than sustainable)
+PACE_CRITICAL = 1.3      # Critical if pace > 1.3 (aligned with README)
 
 
 def calc_runway(utilization: float, daily_avg: float, hours_remaining: float) -> dict:
@@ -142,18 +140,29 @@ def calc_runway(utilization: float, daily_avg: float, hours_remaining: float) ->
     }
 
 
-def calc_status(pace_ratio: float, safety_ratio: float) -> str:
+def calc_status(pace_ratio: float, safety_ratio: float, utilization: float) -> str:
     """Determine status from combined pace and safety metrics.
 
-    Safety ratio takes priority: if you're about to exhaust quota,
-    it's critical regardless of historical pace.
+    Safety thresholds adjust based on utilization:
+    - Low usage (<50%): more lenient (time to recover)
+    - High usage (>50%): stricter (less margin for error)
     """
+    # Dynamic safety thresholds based on utilization
+    if utilization > 50:
+        # High usage: stricter thresholds
+        safety_critical = 0.85
+        safety_warning = 1.15
+    else:
+        # Low usage: more lenient thresholds
+        safety_critical = 0.7
+        safety_warning = 1.0
+
     # Critical: will exhaust before reset OR very high projected usage
-    if safety_ratio < SAFETY_CRITICAL or pace_ratio > PACE_CRITICAL:
+    if safety_ratio < safety_critical or pace_ratio > PACE_CRITICAL:
         return "critical"
 
     # Warning: reduced margin OR elevated pace
-    if safety_ratio < SAFETY_WARNING or pace_ratio > PACE_WARNING:
+    if safety_ratio < safety_warning or pace_ratio > PACE_WARNING:
         return "over_pace"
 
     # Banking quota
@@ -181,8 +190,8 @@ def calc_pace(utilization: float, resets_at: str, window_days: int) -> dict:
     hours_remaining = days_remaining * 24
     runway = calc_runway(utilization, daily_avg, hours_remaining)
 
-    # Determine status from combined metrics
-    status = calc_status(pace_ratio, runway["safety_ratio"])
+    # Determine status from combined metrics (with dynamic thresholds)
+    status = calc_status(pace_ratio, runway["safety_ratio"], utilization)
 
     return {
         "pct": utilization,
