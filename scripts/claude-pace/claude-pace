@@ -449,7 +449,8 @@ def pretty_print(data: dict) -> None:
     print(f"  Pace: {w_col}{pace:.2f}x{reset} ({w_status})")
     print(f"  Safety: {w_col}{safety:.2f}x{reset} │ Runway: {runway:.0f}h │ Buffer: {buffer:+.0f}h")
     print(f"  Projected EOW: {w_col}{w_proj:.0f}%{reset}")
-    print(f"  Resets in: {w_days:.1f} days")
+    w_hours = w_days * 24
+    print(f"  Resets in: {w_days:.1f} days ({w_hours:.0f}h)")
 
     print()
 
