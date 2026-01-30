@@ -173,6 +173,29 @@ All scripts use truecolor (24-bit RGB) for consistent appearance:
 | Red | Critical | `255,85,85` |
 | Gray | Inactive | ANSI 90 |
 
+## Configuration
+
+### Working Hours (claude-pace)
+
+By default, `claude-pace` calculates runway and safety metrics assuming 18 working hours per day (08:00-02:00). This reflects realistic usage patterns rather than 24/7 availability.
+
+Create `~/.config/claude-pace/config.json` to customize:
+
+```json
+{
+  "work_start": "08:00",
+  "work_end": "02:00"
+}
+```
+
+- Times use 24h format (`HH:MM`)
+- If `work_end` < `work_start`, it's interpreted as next day (overnight work)
+- Example: `"08:00"` to `"02:00"` = 18 hours/day
+
+### Early Burst Tolerance
+
+At low utilization (< 10%), pace-based warnings are suppressed. This prevents false alarms from early session bursts when there's plenty of time to recover.
+
 ## Customization
 
 Scripts are simple and hackable. Each script folder has its own README with details on thresholds and output format.

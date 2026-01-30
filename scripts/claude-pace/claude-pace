@@ -29,8 +29,45 @@ from pathlib import Path
 
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "claude-pace"
 CACHE_FILE = CACHE_DIR / "usage.json"
+CONFIG_FILE = Path.home() / ".config" / "claude-pace" / "config.json"
 LOCK_FILE = CACHE_DIR / "refresh.lock"
 CACHE_TTL = 300  # 5 minutes
+
+# Default working hours config (can be overridden in config.json)
+DEFAULT_CONFIG = {
+    "work_start": "08:00",  # Start of work day
+    "work_end": "02:00",    # End of work day (next day if < start)
+    "working_hours_per_day": 18,  # Fallback if start/end not set
+}
+
+
+def load_config() -> dict:
+    """Load config from file or return defaults."""
+    if CONFIG_FILE.exists():
+        try:
+            user_config = json.loads(CONFIG_FILE.read_text())
+            return {**DEFAULT_CONFIG, **user_config}
+        except (json.JSONDecodeError, OSError):
+            pass
+    return DEFAULT_CONFIG
+
+
+def calc_working_hours_per_day(config: dict) -> float:
+    """Calculate working hours per day from start/end times."""
+    start = config.get("work_start", "08:00")
+    end = config.get("work_end", "02:00")
+
+    start_h, start_m = map(int, start.split(":"))
+    end_h, end_m = map(int, end.split(":"))
+
+    start_mins = start_h * 60 + start_m
+    end_mins = end_h * 60 + end_m
+
+    # Handle overnight (e.g., 08:00 - 02:00)
+    if end_mins <= start_mins:
+        end_mins += 24 * 60
+
+    return (end_mins - start_mins) / 60
 
 
 def get_cache_age() -> float:
@@ -112,31 +149,49 @@ def parse_reset(reset_str: str) -> datetime:
 PACE_WARNING = 1.0       # Warning if pace > 1.0 (using quota faster than sustainable)
 PACE_CRITICAL = 1.3      # Critical if pace > 1.3 (aligned with README)
 
+# Minimum utilization before pace-based warnings apply
+# Below this threshold, there's plenty of runway to recover
+MIN_UTIL_FOR_PACE_WARNING = 10  # Don't warn based on pace alone if < 10% used
 
-def calc_runway(utilization: float, daily_avg: float, hours_remaining: float) -> dict:
+
+def calc_runway(utilization: float, daily_avg: float, hours_remaining: float, working_hours_per_day: float = 18) -> dict:
     """Calculate runway metrics (how long until quota exhaustion).
 
-    Runway is the number of hours of usage remaining at current burn rate.
-    Safety ratio compares runway to time remaining until reset.
+    Runway is the number of WORKING hours remaining at current burn rate.
+    Safety ratio compares runway to working time remaining until reset.
+
+    Args:
+        utilization: Current usage percentage
+        daily_avg: Average daily usage rate (percentage per day)
+        hours_remaining: Total hours until reset (calendar time)
+        working_hours_per_day: Hours per day actually spent working (default 18)
     """
     remaining_pct = 100 - utilization
-    burn_rate_hour = daily_avg / 24 if daily_avg > 0 else 0
 
-    if burn_rate_hour > 0:
-        runway_hours = remaining_pct / burn_rate_hour
+    # Convert to working hours
+    days_remaining = hours_remaining / 24
+    working_hours_remaining = days_remaining * working_hours_per_day
+
+    # Burn rate per working hour (not calendar hour)
+    burn_rate_working_hour = daily_avg / working_hours_per_day if daily_avg > 0 else 0
+
+    if burn_rate_working_hour > 0:
+        runway_hours = remaining_pct / burn_rate_working_hour
     else:
         runway_hours = float('inf')
 
-    if hours_remaining > 0:
-        safety_ratio = runway_hours / hours_remaining
+    if working_hours_remaining > 0:
+        safety_ratio = runway_hours / working_hours_remaining
     else:
         safety_ratio = 0 if utilization >= 100 else float('inf')
 
     return {
         "runway_hours": round(runway_hours, 1) if runway_hours != float('inf') else 9999,
-        "hours_remaining": round(hours_remaining, 1),
+        "hours_remaining": round(working_hours_remaining, 1),  # Now in working hours
+        "calendar_hours_remaining": round(hours_remaining, 1),
         "safety_ratio": round(safety_ratio, 2) if safety_ratio != float('inf') else 99,
-        "buffer_hours": round(runway_hours - hours_remaining, 1) if runway_hours != float('inf') else 9999,
+        "buffer_hours": round(runway_hours - working_hours_remaining, 1) if runway_hours != float('inf') else 9999,
+        "working_hours_per_day": working_hours_per_day,
     }
 
 
@@ -144,25 +199,38 @@ def calc_status(pace_ratio: float, safety_ratio: float, utilization: float) -> s
     """Determine status from combined pace and safety metrics.
 
     Safety thresholds adjust based on utilization:
+    - Very low usage (<10%): ignore pace, only check safety
     - Low usage (<50%): more lenient (time to recover)
     - High usage (>50%): stricter (less margin for error)
     """
+    # At very low utilization, don't warn based on pace alone
+    # Early bursts are normal and there's plenty of time to recover
+    pace_matters = utilization >= MIN_UTIL_FOR_PACE_WARNING
+
     # Dynamic safety thresholds based on utilization
     if utilization > 50:
         # High usage: stricter thresholds
         safety_critical = 0.85
         safety_warning = 1.15
-    else:
-        # Low usage: more lenient thresholds
+    elif utilization > MIN_UTIL_FOR_PACE_WARNING:
+        # Low-medium usage: moderate thresholds
         safety_critical = 0.7
         safety_warning = 1.0
+    else:
+        # Very low usage: very lenient (only alert on extreme safety issues)
+        safety_critical = 0.5
+        safety_warning = 0.7
 
-    # Critical: will exhaust before reset OR very high projected usage
-    if safety_ratio < safety_critical or pace_ratio > PACE_CRITICAL:
+    # Critical: will exhaust before reset OR very high projected usage (if pace matters)
+    if safety_ratio < safety_critical:
+        return "critical"
+    if pace_matters and pace_ratio > PACE_CRITICAL:
         return "critical"
 
-    # Warning: reduced margin OR elevated pace
-    if safety_ratio < safety_warning or pace_ratio > PACE_WARNING:
+    # Warning: reduced margin OR elevated pace (if pace matters)
+    if safety_ratio < safety_warning:
+        return "over_pace"
+    if pace_matters and pace_ratio > PACE_WARNING:
         return "over_pace"
 
     # Banking quota
@@ -172,8 +240,13 @@ def calc_status(pace_ratio: float, safety_ratio: float, utilization: float) -> s
     return "on_track"
 
 
-def calc_pace(utilization: float, resets_at: str, window_days: int) -> dict:
+def calc_pace(utilization: float, resets_at: str, window_days: int, config: dict | None = None) -> dict:
     """Calculate pace ratio: current daily rate vs sustainable rate."""
+    if config is None:
+        config = load_config()
+
+    working_hours_per_day = calc_working_hours_per_day(config)
+
     now = datetime.now(timezone.utc)
     reset_dt = parse_reset(resets_at)
     days_remaining = (reset_dt - now).total_seconds() / 86400
@@ -186,9 +259,9 @@ def calc_pace(utilization: float, resets_at: str, window_days: int) -> dict:
     sustainable_rate = 100.0 / window_days
     pace_ratio = daily_avg / sustainable_rate
 
-    # Calculate runway and safety metrics
+    # Calculate runway and safety metrics (using working hours)
     hours_remaining = days_remaining * 24
-    runway = calc_runway(utilization, daily_avg, hours_remaining)
+    runway = calc_runway(utilization, daily_avg, hours_remaining, working_hours_per_day)
 
     # Determine status from combined metrics (with dynamic thresholds)
     status = calc_status(pace_ratio, runway["safety_ratio"], utilization)
@@ -204,8 +277,10 @@ def calc_pace(utilization: float, resets_at: str, window_days: int) -> dict:
         "resets_at": resets_at,
         "status": status,
         "runway_hours": runway["runway_hours"],
+        "working_hours_remaining": runway["hours_remaining"],
         "safety_ratio": runway["safety_ratio"],
         "buffer_hours": runway["buffer_hours"],
+        "working_hours_per_day": working_hours_per_day,
     }
 
 
@@ -444,13 +519,16 @@ def pretty_print(data: dict) -> None:
     runway = weekly.get("runway_hours", 9999)
     buffer = weekly.get("buffer_hours", 9999)
 
+    working_h_remaining = weekly.get("working_hours_remaining", w_days * 18)
+    working_h_per_day = weekly.get("working_hours_per_day", 18)
+
     print(f"{bold}Weekly (7 days){reset}")
     print(f"  Used: {w_col}{w_pct:.0f}%{reset} │ Remaining: {w_remaining:.0f}%")
     print(f"  Pace: {w_col}{pace:.2f}x{reset} ({w_status})")
     print(f"  Safety: {w_col}{safety:.2f}x{reset} │ Runway: {runway:.0f}h │ Buffer: {buffer:+.0f}h")
     print(f"  Projected EOW: {w_col}{w_proj:.0f}%{reset}")
-    w_hours = w_days * 24
-    print(f"  Resets in: {w_days:.1f} days ({w_hours:.0f}h)")
+    print(f"  Resets in: {w_days:.1f} days ({working_h_remaining:.0f} working hours)")
+    print(f"  {dim}(Working day: {working_h_per_day:.0f}h){reset}")
 
     print()
 
