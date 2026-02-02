@@ -534,12 +534,19 @@ def pretty_print(data: dict) -> None:
 
     # 5-hour section
     h_pct = five_h.get("pct", 0)
-    h_remaining = 100 - h_pct
+    h_remaining_pct = 100 - h_pct
     h_resets = five_h.get("resets_in", "?")
+    h_hours_left = five_h.get("hours_remaining", 0)
+
+    # Safe rate: max burn rate to stay within 100% by reset
+    if h_hours_left > 0:
+        safe_rate = h_remaining_pct / h_hours_left
+    else:
+        safe_rate = 0
 
     print(f"{bold}5-Hour Window{reset}")
-    print(f"  Used: {h_col}{h_pct:.0f}%{reset} │ Remaining: {h_remaining:.0f}%")
-    print(f"  Burn rate: {h_col}{burn:.1f}%/h{reset}")
+    print(f"  Used: {h_col}{h_pct:.0f}%{reset} │ Remaining: {h_remaining_pct:.0f}%")
+    print(f"  Burn rate: {h_col}{burn:.1f}%/h{reset} │ Safe rate: {safe_rate:.1f}%/h")
     print(f"  Resets in: {h_resets}")
 
     print()
