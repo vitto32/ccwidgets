@@ -24,6 +24,7 @@ OPTIONS:
 
 EXAMPLES:
     ccuse usage --pretty    # Human-readable Claude usage
+    ccuse usage -w          # Interactive mode (auto-reload 20min, 'r' to refresh)
     ccuse widget            # Compact dot indicator
     ccuse git-files         # Show file changes
 

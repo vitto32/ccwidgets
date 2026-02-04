@@ -11,6 +11,7 @@ Features:
 Usage: claude-pace [OPTIONS]
   --force          Bypass cache and fetch fresh data
   --pretty         Human-readable formatted output
+  --watch, -w      Interactive mode: auto-reload every 20min, press 'r' to refresh
   --always-on-7d   Compact statusline segment for weekly window
   --always-on-5h   Compact statusline segment for 5h window
   --no-dots        Hide status dots (●●)
@@ -21,8 +22,11 @@ Usage: claude-pace [OPTIONS]
 
 import json
 import os
+import select
 import subprocess
 import sys
+import termios
+import tty
 import urllib.request
 from datetime import datetime, timezone
 from pathlib import Path
@@ -561,10 +565,64 @@ def fetch_and_cache() -> dict:
     return result
 
 
+def watch_mode() -> None:
+    """Interactive watch mode: auto-reload every 20min, 'r' to refresh, 'q' to quit."""
+    RELOAD_INTERVAL = 20 * 60  # 20 minutes in seconds
+
+    def clear_screen():
+        print("\033[2J\033[H", end="")
+
+    def print_status(data: dict, last_refresh: datetime):
+        clear_screen()
+        pretty_print(data)
+        dim = "\033[90m"
+        reset = "\033[0m"
+        print(f"{dim}Last refresh: {last_refresh.strftime('%H:%M:%S')}")
+        print(f"Press 'r' to reload, 'q' to quit{reset}")
+
+    # Save terminal settings and set raw mode
+    fd = sys.stdin.fileno()
+    old_settings = termios.tcgetattr(fd)
+
+    try:
+        tty.setcbreak(fd)
+
+        # Initial fetch
+        data = fetch_and_cache()
+        last_refresh = datetime.now()
+        print_status(data, last_refresh)
+
+        while True:
+            # Wait for input or timeout (20 minutes)
+            readable, _, _ = select.select([sys.stdin], [], [], RELOAD_INTERVAL)
+
+            if readable:
+                key = sys.stdin.read(1).lower()
+                if key == "q":
+                    break
+                elif key == "r":
+                    data = fetch_and_cache()
+                    last_refresh = datetime.now()
+                    print_status(data, last_refresh)
+            else:
+                # Timeout: auto-reload
+                data = fetch_and_cache()
+                last_refresh = datetime.now()
+                print_status(data, last_refresh)
+
+    except KeyboardInterrupt:
+        pass
+    finally:
+        # Restore terminal settings
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        print()  # Clean exit
+
+
 def main():
     args = sys.argv[1:]
     force = "--force" in args
     pretty = "--pretty" in args
+    watch = "--watch" in args or "-w" in args
     show_7d = "--always-on-7d" in args
     show_5h = "--always-on-5h" in args
     no_dots = "--no-dots" in args
@@ -582,6 +640,11 @@ def main():
             fetch_and_cache()
         finally:
             LOCK_FILE.unlink(missing_ok=True)
+        return
+
+    # Interactive watch mode
+    if watch:
+        watch_mode()
         return
 
     # Try fresh cache first
