@@ -28,32 +28,21 @@ Symbol: `≪` `<` `≈` `>` `≫` based on pace ratio.
 
 ## Installation
 
-```bash
-# Clone the repo (pick your preferred location)
-git clone https://github.com/vittodevit/ccwidgets ~/.local/ccwidgets
+### Homebrew (recommended)
 
-# Run installer (creates symlinks in ~/.local/bin)
+```bash
+brew tap vitto32/ccwidgets
+brew install ccwidgets
+```
+
+### From source
+
+```bash
+git clone https://github.com/vitto32/ccwidgets ~/.local/ccwidgets
 ~/.local/ccwidgets/install.sh
 ```
 
-The installer will:
-1. Create symlinks for all scripts in `~/.local/bin`
-2. Check for required dependencies (`python3`, `jq`, `git`)
-3. Warn if `~/.local/bin` is not in your PATH
-
-### Manual Installation
-
-If you prefer manual setup:
-
-```bash
-# Add to PATH (in ~/.bashrc or ~/.zshrc)
-export PATH="$HOME/.local/bin:$PATH"
-
-# Create symlinks manually
-ln -sf ~/.local/ccwidgets/scripts/claude-pace/claude-pace ~/.local/bin/
-ln -sf ~/.local/ccwidgets/scripts/claude-usage-widget/claude-usage-widget.sh ~/.local/bin/
-# ... etc
-```
+The installer creates symlinks in `~/.local/bin` and checks for dependencies. Make sure `~/.local/bin` is in your `PATH`.
 
 ## Scripts
 
@@ -192,9 +181,9 @@ Create `~/.config/claude-pace/config.json` to customize:
 - If `work_end` < `work_start`, it's interpreted as next day (overnight work)
 - Example: `"08:00"` to `"02:00"` = 18 hours/day
 
-### Early Burst Tolerance
+### Elapsed-Fraction Tolerance
 
-At low utilization (< 10%), pace-based warnings are suppressed. This prevents false alarms from early session bursts when there's plenty of time to recover.
+Alert thresholds adapt based on how far into the time window you are. Early in the window, linear extrapolation from a small sample is unreliable, so thresholds are scaled harder to breach using an inverse-sqrt curve. This prevents false CRITICALs from morning sprints at the start of the week while still alerting on genuinely unsustainable rates. At low utilization (< 10%), pace-based CRITICAL is suppressed entirely — only WARNING is possible for extreme pace.
 
 ## Customization
 
