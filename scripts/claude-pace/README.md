@@ -95,6 +95,19 @@ JSON with two windows:
 - `<= 1.3` - over_pace (will likely hit limit)
 - `> 1.3` - critical (throttle imminent)
 
+### Elapsed-fraction tolerance
+
+Alert thresholds adapt based on how far into the time window you are. Early in the window, linear extrapolation from a tiny sample is unreliable, so thresholds are scaled to be harder to breach. The scaling follows an inverse-sqrt curve (similar to confidence intervals narrowing with more observations) and converges to base thresholds as the window progresses.
+
+| Elapsed | Tolerance | Effect |
+|---------|-----------|--------|
+| ~1.7h (1%) | 3.7x | CRITICAL nearly impossible; only extreme pace triggers WARNING |
+| ~1 day (14%) | 1.5x | Moderate dampening |
+| ~3.5 days (50%) | 1.1x | Near base thresholds |
+| 7 days (100%) | 1.0x | No adjustment |
+
+This prevents false CRITICALs from morning sprints at the start of the week while still alerting on genuinely unsustainable rates.
+
 ## Requirements
 
 - Python 3.10+

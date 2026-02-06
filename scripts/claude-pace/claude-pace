@@ -21,6 +21,7 @@ Usage: claude-pace [OPTIONS]
 """
 
 import json
+import math
 import os
 import select
 import subprocess
@@ -204,45 +205,78 @@ def calc_runway(utilization: float, daily_avg: float, hours_remaining: float, wo
     }
 
 
-def calc_status(pace_ratio: float, safety_ratio: float, utilization: float) -> str:
+def elapsed_tolerance(elapsed_fraction: float) -> float:
+    """Scale factor for alert thresholds based on how far into the window we are.
+
+    Early in the window, linear extrapolation from a tiny sample is unreliable.
+    This returns a multiplier > 1.0 that makes thresholds harder to breach early,
+    converging to 1.0 (no adjustment) as the window progresses.
+
+    Based on the inverse-sqrt curve used in confidence-interval scaling and
+    SRE burn-rate alerting: uncertainty decreases as 1/sqrt(observations).
+
+    Reference values (7-day window):
+        t=0.01 (~1.7h)  -> 3.7x  (very forgiving)
+        t=0.05 (~8.4h)  -> 2.0x
+        t=0.14 (~1 day) -> 1.5x
+        t=0.25 (~1.75d) -> 1.3x
+        t=0.50 (~3.5d)  -> 1.1x
+        t=1.00 (7d)     -> 1.0x  (base thresholds)
+    """
+    t = max(elapsed_fraction, 0.01)
+    return 1.0 + 0.3 * max(0.0, (1.0 / math.sqrt(t)) - 1.0)
+
+
+def calc_status(pace_ratio: float, safety_ratio: float, utilization: float, elapsed_fraction: float = 1.0) -> str:
     """Determine status from combined pace and safety metrics.
 
-    Safety thresholds adjust based on utilization:
-    - Very low usage (<10%): ignore pace, only check safety
-    - Low usage (<50%): more lenient (time to recover)
-    - High usage (>50%): stricter (less margin for error)
+    Thresholds adapt on two axes:
+    1. Utilization — how much budget is consumed (low=lenient, high=strict)
+    2. Elapsed fraction — how far through the time window (early=lenient, late=strict)
+
+    The elapsed-fraction scaling prevents false CRITICALs from early bursts where
+    linear extrapolation is dominated by noise. As the window progresses, thresholds
+    converge to their base values.
     """
-    # At very low utilization, don't warn based on pace alone
-    # Early bursts are normal and there's plenty of time to recover
     pace_matters = utilization >= MIN_UTIL_FOR_PACE_WARNING
 
-    # Dynamic safety thresholds based on utilization
+    # Base safety thresholds (utilization-dependent)
     if utilization > 50:
-        # High usage: stricter thresholds
         safety_critical = 0.85
         safety_warning = 1.15
     elif utilization > MIN_UTIL_FOR_PACE_WARNING:
-        # Low-medium usage: moderate thresholds
         safety_critical = 0.7
         safety_warning = 1.0
     else:
-        # Very low usage: very lenient (only alert on extreme safety issues)
         safety_critical = 0.5
         safety_warning = 0.7
 
-    # Critical: will exhaust before reset OR very high projected usage (if pace matters)
-    if safety_ratio < safety_critical:
+    # Apply elapsed-fraction scaling: divide safety thresholds (harder to breach
+    # early), multiply pace thresholds (harder to breach early)
+    tol = elapsed_tolerance(elapsed_fraction)
+    eff_safety_critical = safety_critical / tol
+    eff_safety_warning = safety_warning / tol
+    eff_pace_critical = PACE_CRITICAL * tol
+    eff_pace_warning = PACE_WARNING * tol
+
+    # Critical: exhaustion projected OR extreme pace (if enough data)
+    if safety_ratio < eff_safety_critical:
         return "critical"
-    if pace_matters and pace_ratio > PACE_CRITICAL:
+    if pace_matters and pace_ratio > eff_pace_critical:
         return "critical"
 
-    # Warning: reduced margin OR elevated pace (if pace matters)
-    if safety_ratio < safety_warning:
+    # Warning: reduced margin OR elevated pace
+    if safety_ratio < eff_safety_warning:
         return "over_pace"
-    if pace_matters and pace_ratio > PACE_WARNING:
+    if pace_matters and pace_ratio > eff_pace_warning:
         return "over_pace"
 
-    # Banking quota
+    # Extreme pace at low utilization: warn (never critical) so the user
+    # still knows they're burning fast. Cap at 1.2x keeps the threshold
+    # reachable (1.3 * 1.2 = 1.56x) even when time tolerance is very high.
+    if not pace_matters and pace_ratio > PACE_CRITICAL * min(tol, 1.2):
+        return "over_pace"
+
     if pace_ratio <= 0.8:
         return "under_pace"
 
@@ -273,7 +307,8 @@ def calc_pace(utilization: float, resets_at: str, window_days: int, config: dict
     runway = calc_runway(utilization, daily_avg, hours_remaining, working_hours_per_day)
 
     # Determine status from combined metrics (with dynamic thresholds)
-    status = calc_status(pace_ratio, runway["safety_ratio"], utilization)
+    elapsed_fraction = days_elapsed / window_days
+    status = calc_status(pace_ratio, runway["safety_ratio"], utilization, elapsed_fraction)
 
     return {
         "pct": utilization,
