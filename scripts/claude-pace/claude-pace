@@ -144,9 +144,14 @@ def fetch_usage(token: str) -> dict:
         return json.loads(resp.read().decode())
 
 
-def parse_reset(reset_str: str) -> datetime:
-    """Parse ISO timestamp to datetime."""
-    return datetime.fromisoformat(reset_str)
+def parse_reset(reset_str) -> datetime:
+    """Parse ISO timestamp to datetime. Returns epoch on bad input."""
+    if not isinstance(reset_str, str):
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
+    try:
+        return datetime.fromisoformat(reset_str)
+    except (ValueError, TypeError):
+        return datetime(1970, 1, 1, tzinfo=timezone.utc)
 
 
 # Base status thresholds (adjusted dynamically based on utilization)
@@ -305,16 +310,16 @@ def process_usage(data: dict) -> dict:
     """Process raw usage data into pace metrics."""
     now = datetime.now(timezone.utc)
 
-    five_hour = data.get("five_hour", {})
-    five_hour_reset = parse_reset(five_hour["resets_at"])
-    five_hour_remaining = (five_hour_reset - now).total_seconds()
+    five_hour = data.get("five_hour") or {}
+    five_hour_reset = parse_reset(five_hour.get("resets_at"))
+    five_hour_remaining = max(0, (five_hour_reset - now).total_seconds())
 
     # Calculate 5h burn rate
     hours_remaining_5h = five_hour_remaining / 3600
     hours_elapsed_5h = 5 - hours_remaining_5h
     if hours_elapsed_5h <= 0:
         hours_elapsed_5h = 0.1
-    pct_5h = five_hour["utilization"]
+    pct_5h = five_hour.get("utilization", 0)
     burn_rate = pct_5h / hours_elapsed_5h
     pace_ratio_5h = burn_rate / 20.0  # sustainable = 20%/h
 
@@ -330,8 +335,12 @@ def process_usage(data: dict) -> dict:
     else:
         status_5h = "over_pace"  # early burst
 
-    seven_day = data.get("seven_day", {})
-    seven_day_pace = calc_pace(seven_day["utilization"], seven_day["resets_at"], 7)
+    seven_day = data.get("seven_day") or {}
+    seven_day_pace = calc_pace(
+        seven_day.get("utilization", 0),
+        seven_day.get("resets_at", ""),
+        7,
+    )
 
     return {
         "five_hour": {
@@ -557,12 +566,20 @@ def pretty_print(data: dict) -> None:
 
 
 def fetch_and_cache() -> dict:
-    """Fetch fresh data from API and write to cache."""
-    token = get_token()
-    raw_usage = fetch_usage(token)
-    result = process_usage(raw_usage)
-    write_cache(result)
-    return result
+    """Fetch fresh data from API and write to cache. Falls back to stale cache on error."""
+    try:
+        token = get_token()
+        raw_usage = fetch_usage(token)
+        result = process_usage(raw_usage)
+        write_cache(result)
+        return result
+    except Exception as exc:
+        stale = read_cache_any()
+        if stale is not None:
+            stale["_stale"] = True
+            stale["_error"] = str(exc)
+            return stale
+        raise
 
 
 def watch_mode() -> None:
@@ -593,7 +610,6 @@ def watch_mode() -> None:
         print_status(data, last_refresh)
 
         while True:
-            # Wait for input or timeout (20 minutes)
             readable, _, _ = select.select([sys.stdin], [], [], RELOAD_INTERVAL)
 
             if readable:
@@ -601,13 +617,18 @@ def watch_mode() -> None:
                 if key == "q":
                     break
                 elif key == "r":
-                    data = fetch_and_cache()
-                    last_refresh = datetime.now()
+                    try:
+                        data = fetch_and_cache()
+                        last_refresh = datetime.now()
+                    except Exception:
+                        pass
                     print_status(data, last_refresh)
             else:
-                # Timeout: auto-reload
-                data = fetch_and_cache()
-                last_refresh = datetime.now()
+                try:
+                    data = fetch_and_cache()
+                    last_refresh = datetime.now()
+                except Exception:
+                    pass
                 print_status(data, last_refresh)
 
     except KeyboardInterrupt:
