@@ -29,10 +29,15 @@ red=$(    printf '\033[38;2;255;85;85m')
 muted=$(  printf '\033[38;2;161;176;184m')
 reset=$(  printf '\033[0m')
 
+effort_suffix=""
+if [[ -n "$CLAUDE_EFFORT_HINT" && "$CLAUDE_EFFORT_HINT" != "high" ]]; then
+  effort_suffix=" ~"
+fi
+
 case "$model_id" in
-  *opus*)   printf "${gray}🤖 Opus${reset}" ;;
-  *sonnet*) printf "${yellow}💻 Sonnet${reset}" ;;
-  *haiku*)  printf "${red}👶 Haiku${reset}" ;;
+  *opus*)   printf "${gray}🤖 Opus${effort_suffix}${reset}" ;;
+  *sonnet*) printf "${yellow}💻 Sonnet${effort_suffix}${reset}" ;;
+  *haiku*)  printf "${red}👶 Haiku${effort_suffix}${reset}" ;;
   *)
     name=$(echo "$input" | jq -r '.model.display_name // "?"' 2>/dev/null)
     printf "${muted}${name}${reset}"
