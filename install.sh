@@ -64,6 +64,7 @@ link_script "${SCRIPT_DIR}/scripts/context-pct/context-pct.sh" "context-pct.sh"
 link_script "${SCRIPT_DIR}/scripts/git-files/git-files.sh" "git-files.sh"
 link_script "${SCRIPT_DIR}/scripts/git-lines/git-lines.sh" "git-lines.sh"
 link_script "${SCRIPT_DIR}/scripts/claude-model/claude-model.sh" "claude-model.sh"
+link_script "${SCRIPT_DIR}/scripts/project-name/project-name.sh" "project-name.sh"
 
 # Link ccuse wrapper
 link_script "${SCRIPT_DIR}/ccuse" "ccuse"
@@ -88,6 +89,7 @@ echo "  context-pct.sh         - Context percentage display"
 echo "  git-files.sh           - Git file status"
 echo "  git-lines.sh           - Git line diff counts"
 echo "  claude-model.sh        - Active Claude model (respects CLAUDE_MODEL_HINT)"
+echo "  project-name.sh        - Project name (respects PROJECT_NAME env var)"
 echo "  ccuse                  - Unified wrapper"
 echo
 echo "Run 'ccuse --help' to see all commands."
