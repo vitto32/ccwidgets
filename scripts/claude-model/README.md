@@ -68,24 +68,45 @@ cc() {
 }
 ```
 
+## Flags
+
+Combine any flags to control output. **Defaults** (no flags): `--emoji --model-short --color`.
+
+| Flag             | Effect                                  |
+|------------------|-----------------------------------------|
+| `--emoji`        | Show model emoji (🤖 💻 👶)             |
+| `--model`        | Show full model name (Opus, Sonnet, Haiku) |
+| `--model-short`  | Show short model name (OP, SN, HK)     |
+| `--color`        | Enable ANSI color output                |
+
 ## Usage
 
 ```bash
-echo '{"model":{"id":"claude-sonnet-4-6","display_name":"Sonnet"}}' | claude-model.sh
-# → 💻 Sonnet  (yellow, from JSON fallback)
+# Defaults: emoji + short name + color
+echo '{}' | claude-model.sh
+# → 🤖 OP  (gray)
 
-CLAUDE_MODEL_HINT=claude-opus-4-6 bash -c 'echo "{}" | claude-model.sh'
-# → 🤖 Opus  (gray, from env var)
+# Full name, no color
+echo '{}' | claude-model.sh --model
+# → Opus
+
+# Emoji + full name + color
+echo '{}' | claude-model.sh --emoji --model --color
+# → 💻 Sonnet  (yellow)
+
+# Just the short code
+echo '{}' | claude-model.sh --model-short
+# → HK
 ```
 
 ## Output colors
 
-| Model   | Emoji | Color  | Hex       | Risk level                  |
-|---------|-------|--------|-----------|-----------------------------|
-| Opus    | 🤖    | gray   | `#a1b0b8` | safe/premium (most capable) |
-| Sonnet  | 💻    | yellow | `#f1fa8c` | balanced (caution)          |
-| Haiku   | 👶    | red    | `#ff5555` | fast/cheap (higher risk)    |
-| unknown | —     | muted  | `#a1b0b8` | —                           |
+| Model   | Emoji | Short | Color  | Hex       | Risk level                  |
+|---------|-------|-------|--------|-----------|-----------------------------|
+| Opus    | 🤖    | OP    | gray   | `#a1b0b8` | safe/premium (most capable) |
+| Sonnet  | 💻    | SN    | yellow | `#f1fa8c` | balanced (caution)          |
+| Haiku   | 👶    | HK    | red    | `#ff5555` | fast/cheap (higher risk)    |
+| unknown | —     | —     | muted  | `#a1b0b8` | —                           |
 
 Color logic: red = fast but prone to mistakes, yellow = balanced but watch out,
 gray = most capable, safest output quality.
