@@ -557,6 +557,23 @@ def pretty_print(data: dict) -> None:
 
     print(f"\n{bold}Claude Usage{reset}\n")
 
+    # Stale data warning
+    if data.get("_stale"):
+        fetched_at_str = data.get("fetched_at", "")
+        stale_col = yellow
+        age_label = "unknown age"
+        if fetched_at_str:
+            try:
+                fetched_dt = datetime.fromisoformat(fetched_at_str)
+                age_secs = (datetime.now(timezone.utc) - fetched_dt).total_seconds()
+                age_label = format_duration(age_secs)
+                if age_secs > 3 * 3600:
+                    stale_col = red
+            except (ValueError, TypeError):
+                stale_col = red
+        error_msg = data.get("_error", "unknown error")
+        print(f"  {stale_col}\uf071 Stale data ({age_label} old) \u2014 {error_msg}{reset}\n")
+
     # Weekly section
     w_pct = weekly.get("pct", 0)
     w_remaining = 100 - w_pct
@@ -613,6 +630,7 @@ def fetch_and_cache() -> dict:
         if stale is not None:
             stale["_stale"] = True
             stale["_error"] = str(exc)
+            write_cache(stale)
             return stale
         raise
 

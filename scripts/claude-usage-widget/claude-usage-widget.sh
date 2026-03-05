@@ -109,7 +109,7 @@ else:
     five_color = "red"
     five_expand = f"5h:{five_pct:.0f}%"
 
-# Output format: weekly_color|weekly_dot|five_color|five_dot|expansion
+# Output format: weekly_color|weekly_dot|five_color|five_dot|expansion|stale_color|stale_icon
 expansion = ""
 if weekly_expand:
     expansion = weekly_expand
@@ -118,12 +118,29 @@ if five_expand:
         expansion += " "
     expansion += five_expand
 
-print(f"{weekly_color}|●|{five_color}|●|{expansion}")
+# Stale data detection
+stale_color = ""
+stale_icon = ""
+if data.get("_stale"):
+    from datetime import datetime, timezone
+    fetched_at = data.get("fetched_at", "")
+    stale_color = "yellow"
+    if fetched_at:
+        try:
+            fetched_dt = datetime.fromisoformat(fetched_at)
+            age_secs = (datetime.now(timezone.utc) - fetched_dt).total_seconds()
+            if age_secs > 3 * 3600:
+                stale_color = "red"
+        except Exception:
+            stale_color = "red"
+    stale_icon = "\uf071"
+
+print(f"{weekly_color}|●|{five_color}|●|{expansion}|{stale_color}|{stale_icon}")
 PYTHON
 )
 
 # Parse output
-IFS='|' read -r weekly_color weekly_dot five_color five_dot expansion <<< "$OUTPUT"
+IFS='|' read -r weekly_color weekly_dot five_color five_dot expansion stale_color stale_icon <<< "$OUTPUT"
 
 # Map color names to ANSI
 get_color() {
@@ -144,4 +161,9 @@ printf "${w_col}●${reset}${f_col}●${reset}"
 if [ -n "$expansion" ]; then
     # Use red for expansion text (use %s to avoid % in expansion being interpreted)
     printf " ${red}%s${reset}" "$expansion"
+fi
+
+if [ -n "$stale_icon" ]; then
+    s_col=$(get_color "$stale_color")
+    printf " ${s_col}%s${reset}" "$stale_icon"
 fi
