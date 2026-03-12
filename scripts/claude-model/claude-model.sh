@@ -2,10 +2,12 @@
 # claude-model.sh - Show the active Claude Code model
 #
 # Flags (combine any):
-#   --emoji        Show model emoji (🤖 💻 👶)
-#   --model        Show full model name (Opus, Sonnet, Haiku)
-#   --model-short  Show short model name (OP, SN, HK)
-#   --color        Enable ANSI color output
+#   --emoji         Show model emoji (🤖 💻 👶)
+#   --model         Show full model name (Opus, Sonnet, Haiku)
+#   --model-short   Show short model name (OP, SN, HK)
+#   --color         Enable ANSI color output
+#   --update-check  Append ↑ X.Y.Z when a newer Claude Code version is available
+#                   (checks npm, cached for 60 minutes in /tmp/claude-update-cache.json)
 #
 # Defaults (no flags): --emoji --model-short --color
 #
@@ -22,14 +24,16 @@ show_emoji=0
 show_model=0
 show_model_short=0
 show_color=0
+show_update_check=0
 has_flags=0
 
 for arg in "$@"; do
   case "$arg" in
-    --emoji)       show_emoji=1;       has_flags=1 ;;
-    --model)       show_model=1;       has_flags=1 ;;
-    --model-short) show_model_short=1; has_flags=1 ;;
-    --color)       show_color=1;       has_flags=1 ;;
+    --emoji)        show_emoji=1;        has_flags=1 ;;
+    --model)        show_model=1;        has_flags=1 ;;
+    --model-short)  show_model_short=1;  has_flags=1 ;;
+    --color)        show_color=1;        has_flags=1 ;;
+    --update-check) show_update_check=1; has_flags=1 ;;
   esac
 done
 
@@ -99,3 +103,36 @@ case "$model_id" in
     printf "${muted}${name}${reset}"
     ;;
 esac
+
+# Update check: compare local version against npm, 60-min cache
+if (( show_update_check )); then
+  cache_file="/tmp/claude-update-cache.json"
+  cache_max=3600
+  need_fetch=1
+  update_version=""
+
+  if [[ -f "$cache_file" ]]; then
+    cache_mtime=$(stat -f %m "$cache_file" 2>/dev/null || echo 0)
+    now=$(date +%s)
+    if (( now - cache_mtime < cache_max )); then
+      need_fetch=0
+      update_version=$(jq -r '.update_version // ""' "$cache_file" 2>/dev/null)
+    fi
+  fi
+
+  if (( need_fetch )); then
+    current=$(claude --version 2>/dev/null | awk '{print $1}')
+    latest=$(npm view @anthropic-ai/claude-code version 2>/dev/null)
+    update_version=""
+    if [[ -n "$current" && -n "$latest" && "$current" != "$latest" ]]; then
+      newer=$(printf '%s\n%s' "$current" "$latest" | sort -V | tail -1)
+      [[ "$newer" == "$latest" ]] && update_version="$latest"
+    fi
+    printf '{"update_version":"%s"}\n' "$update_version" > "$cache_file" 2>/dev/null
+  fi
+
+  if [[ -n "$update_version" ]]; then
+    upd_color=$'\033[38;2;255;200;50m'
+    printf " ${upd_color}↑ %s${reset}" "$update_version"
+  fi
+fi

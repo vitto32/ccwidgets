@@ -78,6 +78,7 @@ Combine any flags to control output. **Defaults** (no flags): `--emoji --model-s
 | `--model`        | Show full model name (Opus, Sonnet, Haiku) |
 | `--model-short`  | Show short model name (OP, SN, HK)     |
 | `--color`        | Enable ANSI color output                |
+| `--update-check` | Append `↑ X.Y.Z` when a newer version is available (60-min cache) |
 
 ## Usage
 
@@ -130,7 +131,19 @@ Command: claude-model.sh
 Stdin: enabled   ← required (receives session JSON for fallback)
 ```
 
+## Update check
+
+`--update-check` compares `claude --version` against `npm view @anthropic-ai/claude-code version`.
+Result is cached in `/tmp/claude-update-cache.json` for 60 minutes.
+
+When an update is available the widget appends `↑ X.Y.Z` in yellow after the model name:
+
+```
+🤖 OP ↑ 2.2.0
+```
+
 ## Dependencies
 
 - `jq`
 - Bash
+- `npm` (only for `--update-check`)
