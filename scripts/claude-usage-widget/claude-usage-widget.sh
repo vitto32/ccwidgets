@@ -32,10 +32,11 @@
 # 5-HOUR:
 #   Uses burn_rate from claude-pace (no recalculation)
 #   - Sustainable rate = 20%/h (100% / 5h)
+#   - pct_used <= 25%     → green (early session grace, burn_rate is noise)
 #   - burn_rate <= 20%/h  → green (at or below sustainable)
 #   - burn_rate <= 25%/h  → yellow (would exhaust in ~4h)
 #   - burn_rate > 25%/h   → red ONLY IF pct_used > 50%
-#                           (early bursts stay yellow)
+#                           (mid-session bursts stay yellow)
 #   - time_remaining < 1h → green (reset imminent)
 #
 # ============================================================================
@@ -95,9 +96,12 @@ if "h" in resets_in:
             hours_remaining += int(parts[1]) / 60
 
 # Determine 5h color (sustainable = 20%/h)
+# Green grace when pct_used is low — early burn_rate is statistical noise
 # Red requires BOTH high burn rate AND >50% used
 five_expand = ""
 if hours_remaining < 1:
+    five_color = "dim_green"
+elif five_pct <= 25:
     five_color = "dim_green"
 elif burn_rate <= 20:
     five_color = "dim_green"
