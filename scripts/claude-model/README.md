@@ -101,12 +101,22 @@ echo '{}' | claude-model.sh --model-short
 
 ## Output colors
 
-| Model   | Emoji | Short | Color  | Hex       | Risk level                  |
-|---------|-------|-------|--------|-----------|-----------------------------|
-| Opus    | 🤖    | OP    | gray   | `#a1b0b8` | safe/premium (most capable) |
-| Sonnet  | 💻    | SN    | yellow | `#f1fa8c` | balanced (caution)          |
-| Haiku   | 👶    | HK    | red    | `#ff5555` | fast/cheap (higher risk)    |
-| unknown | —     | —     | muted  | `#a1b0b8` | —                           |
+Default text colors:
+
+| Model   | Emoji | Full name | Hex       | Risk level                  |
+|---------|-------|-----------|-----------|-----------------------------|
+| Opus    | 🤖    | Opus      | `#a1b0b8` | safe/premium (most capable) |
+| Sonnet  | 💻    | Sonnet    | `#f1fa8c` | balanced (caution)          |
+| Haiku   | 👶    | Haiku     | `#ff5555` | fast/cheap (higher risk)    |
+| unknown | —     | —         | `#a1b0b8` | —                           |
+
+Short badge colors:
+
+| Model  | Short | Text      | Background | Notes                          |
+|--------|-------|-----------|------------|--------------------------------|
+| Opus   | OP    | `#ffffff` | default    | keeps the terminal background  |
+| Sonnet | SN    | `#1E1E2E` | `#6CD7CA`  | uses a mint badge              |
+| Haiku  | HK    | `#C23128` | `#FFC601`  | uses a gold badge              |
 
 Color logic: red = fast but prone to mistakes, yellow = balanced but watch out,
 gray = most capable, safest output quality.

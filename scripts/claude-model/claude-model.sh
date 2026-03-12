@@ -51,10 +51,15 @@ if (( show_color )); then
   gray=$(   printf '\033[38;2;161;176;184m')
   yellow=$( printf '\033[38;2;241;250;140m')
   red=$(    printf '\033[38;2;255;85;85m')
+  white=$(  printf '\033[38;2;255;255;255m')
+  ink=$(    printf '\033[38;2;30;30;46m')
+  coral=$(  printf '\033[38;2;194;49;40m')
+  mint_bg=$( printf '\033[48;2;108;215;202m')
+  gold_bg=$( printf '\033[48;2;255;198;1m')
   muted=$(  printf '\033[38;2;161;176;184m')
   reset=$(  printf '\033[0m')
 else
-  gray="" yellow="" red="" muted="" reset=""
+  gray="" yellow="" red="" white="" ink="" coral="" mint_bg="" gold_bg="" muted="" reset=""
 fi
 
 effort_suffix=""
@@ -63,19 +68,32 @@ if [[ -n "$CLAUDE_EFFORT_HINT" && "$CLAUDE_EFFORT_HINT" != "high" ]]; then
 fi
 
 render() {
-  local color="$1" emoji="$2" name="$3" short="$4"
-  local parts=()
-  (( show_emoji ))       && parts+=("$emoji")
-  (( show_model ))       && parts+=("$name")
-  (( show_model_short )) && parts+=("$short")
-  local out="${parts[*]}${effort_suffix}"
-  printf "${color}${out}${reset}"
+  local base_color="$1" emoji="$2" name="$3" short="$4" short_style="$5"
+  local pieces=()
+
+  if (( show_emoji )); then
+    pieces+=("${base_color}${emoji}${reset}")
+  fi
+
+  if (( show_model )); then
+    pieces+=("${base_color}${name}${reset}")
+  fi
+
+  if (( show_model_short )); then
+    pieces+=("${short_style}${short}${reset}")
+  fi
+
+  if [[ -n "$effort_suffix" ]]; then
+    pieces+=("${base_color}${effort_suffix}${reset}")
+  fi
+
+  printf '%s' "${pieces[*]}"
 }
 
 case "$model_id" in
-  *opus*)   render "$gray"   "🤖" "Opus"   "OP" ;;
-  *sonnet*) render "$yellow" "💻" "Sonnet" "SN" ;;
-  *haiku*)  render "$red"    "👶" "Haiku"  "HK" ;;
+  *opus*)   render "$gray"   "🤖" "Opus"   "OP" "$white" ;;
+  *sonnet*) render "$yellow" "💻" "Sonnet" "SN" "${mint_bg}${ink}" ;;
+  *haiku*)  render "$red"    "👶" "Haiku"  "HK" "${gold_bg}${coral}" ;;
   *)
     name=$(echo "$input" | jq -r '.model.display_name // "?"' 2>/dev/null)
     printf "${muted}${name}${reset}"
