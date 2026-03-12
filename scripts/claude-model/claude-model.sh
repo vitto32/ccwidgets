@@ -33,7 +33,7 @@ for arg in "$@"; do
     --model)        show_model=1;        has_flags=1 ;;
     --model-short)  show_model_short=1;  has_flags=1 ;;
     --color)        show_color=1;        has_flags=1 ;;
-    --update-check) show_update_check=1; has_flags=1 ;;
+    --update-check) show_update_check=1 ;;
   esac
 done
 
