@@ -30,14 +30,8 @@
 #   - "critical"                → red + show details
 #
 # 5-HOUR:
-#   Uses burn_rate from claude-pace (no recalculation)
-#   - Sustainable rate = 20%/h (100% / 5h)
-#   - pct_used <= 25%     → green (early session grace, burn_rate is noise)
-#   - burn_rate <= 20%/h  → green (at or below sustainable)
-#   - burn_rate <= 25%/h  → yellow (would exhaust in ~4h)
-#   - burn_rate > 25%/h   → red ONLY IF pct_used > 50%
-#                           (mid-session bursts stay yellow)
-#   - time_remaining < 1h → green (reset imminent)
+#   Uses status from claude-pace (unified elapsed_tolerance curve).
+#   Same inverse-sqrt scaling as weekly — no ad-hoc thresholds.
 #
 # ============================================================================
 
@@ -80,38 +74,19 @@ else:
     weekly_color = "dim_green"
     weekly_expand = ""
 
-# 5h: use burn_rate from claude-pace (no recalculation)
+# 5h: use status from claude-pace (unified elapsed_tolerance curve)
 five_hour = data.get("five_hour", {})
 five_pct = five_hour.get("pct", 0)
-burn_rate = five_hour.get("burn_rate", 0)
-resets_in = five_hour.get("resets_in", "0h 0m")
+five_status = five_hour.get("status", "on_track")
 
-# Parse resets_in only for reset-imminent check
-hours_remaining = 0
-if "h" in resets_in:
-    parts = resets_in.replace("d", " ").replace("h", " ").replace("m", "").split()
-    if len(parts) >= 1:
-        hours_remaining = int(parts[0])
-        if len(parts) >= 2:
-            hours_remaining += int(parts[1]) / 60
-
-# Determine 5h color (sustainable = 20%/h)
-# Green grace when pct_used is low — early burn_rate is statistical noise
-# Red requires BOTH high burn rate AND >50% used
 five_expand = ""
-if hours_remaining < 1:
-    five_color = "dim_green"
-elif five_pct <= 25:
-    five_color = "dim_green"
-elif burn_rate <= 20:
-    five_color = "dim_green"
-elif burn_rate <= 25:
-    five_color = "yellow"
-elif five_pct <= 50:
-    five_color = "yellow"
-else:
+if five_status == "critical":
     five_color = "red"
     five_expand = f"5h:{five_pct:.0f}%"
+elif five_status == "over_pace":
+    five_color = "yellow"
+else:
+    five_color = "dim_green"
 
 # Output format: weekly_color|weekly_dot|five_color|five_dot|expansion|stale_color|stale_icon
 expansion = ""
