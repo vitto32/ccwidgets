@@ -544,14 +544,16 @@ def pretty_print(data: dict) -> None:
         w_col = green
         w_status = "on track"
 
-    # Determine 5h color (sustainable rate = 20%/h)
+    # Determine 5h color from the computed status so rendering stays aligned
+    # with the JSON/widget output at edge states like 100% exhaustion.
+    h_status = five_h.get("status", "on_track")
     burn = five_h.get("burn_rate", 0)
-    if burn <= 20:
-        h_col = green
-    elif burn <= 25:
+    if h_status == "critical":
+        h_col = red
+    elif h_status == "over_pace":
         h_col = yellow
     else:
-        h_col = red
+        h_col = green
 
     print(f"\n{bold}Claude Usage{reset}\n")
 
@@ -601,15 +603,13 @@ def pretty_print(data: dict) -> None:
     h_resets = five_h.get("resets_in", "?")
     h_hours_left = five_h.get("hours_remaining", 0)
 
-    # Safe rate: max burn rate to stay within 100% by reset
-    if h_hours_left > 0:
-        safe_rate = h_remaining_pct / h_hours_left
-    else:
-        safe_rate = 0
-
     print(f"{bold}5-Hour Window{reset}")
     print(f"  Used: {h_col}{h_pct:.0f}%{reset} │ Remaining: {h_remaining_pct:.0f}%")
-    print(f"  Burn rate: {h_col}{burn:.1f}%/h{reset} │ Safe rate: {safe_rate:.1f}%/h")
+    if h_remaining_pct <= 0:
+        print(f"  Burn rate: {h_col}{burn:.1f}%/h{reset}")
+    else:
+        safe_rate = h_remaining_pct / h_hours_left if h_hours_left > 0 else 0
+        print(f"  Burn rate: {h_col}{burn:.1f}%/h{reset} │ Safe rate: {safe_rate:.1f}%/h")
     print(f"  Resets in: {h_resets}")
 
     print()
