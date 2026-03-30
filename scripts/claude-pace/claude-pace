@@ -37,6 +37,7 @@ CACHE_FILE = CACHE_DIR / "usage.json"
 CONFIG_FILE = Path.home() / ".config" / "claude-pace" / "config.json"
 LOCK_FILE = CACHE_DIR / "refresh.lock"
 CACHE_TTL = 300  # 5 minutes
+REFRESH_COOLDOWN = 10  # minimum seconds between manual refreshes
 
 # Default working hours config (can be overridden in config.json)
 DEFAULT_CONFIG = {
@@ -640,13 +641,15 @@ def watch_mode() -> None:
     def clear_screen():
         print("\033[2J\033[H", end="")
 
-    def print_status(data: dict, last_refresh: datetime):
+    def print_status(data: dict, last_refresh: datetime, notice: str = ""):
         clear_screen()
         pretty_print(data)
         dim = "\033[90m"
+        yellow = "\033[33m"
         reset = "\033[0m"
-        print(f"{dim}Last refresh: {last_refresh.strftime('%H:%M:%S')}")
-        print(f"Press 'r' to reload, 'q' to quit{reset}")
+        notice_str = f"  {yellow}{notice}{reset}" if notice else ""
+        print(f"{dim}Last refresh: {last_refresh.strftime('%H:%M:%S')}{reset}{notice_str}")
+        print(f"{dim}Press 'r' to reload, 'q' to quit{reset}")
 
     # Save terminal settings and set raw mode
     fd = sys.stdin.fileno()
@@ -668,12 +671,17 @@ def watch_mode() -> None:
                 if key == "q":
                     break
                 elif key == "r":
-                    try:
-                        data = fetch_and_cache()
-                        last_refresh = datetime.now()
-                    except Exception:
-                        pass
-                    print_status(data, last_refresh)
+                    elapsed = (datetime.now() - last_refresh).total_seconds()
+                    if elapsed < REFRESH_COOLDOWN:
+                        print_status(data, last_refresh,
+                                     f"throttled – wait {int(REFRESH_COOLDOWN - elapsed)}s")
+                    else:
+                        try:
+                            data = fetch_and_cache()
+                            last_refresh = datetime.now()
+                        except Exception:
+                            pass
+                        print_status(data, last_refresh)
             else:
                 try:
                     data = fetch_and_cache()
